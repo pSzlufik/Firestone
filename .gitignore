@@ -1,0 +1,14 @@
+# Per-machine calibrated coordinates (each PC/resolution differs).
+# Commit it yourself if you want to share a calibration across identical setups.
+config.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store

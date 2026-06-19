@@ -1,0 +1,72 @@
+xdotool search --name 'Firestone' windowactivate sleep 1
+WID=$(xdotool getactivewindow)
+xdotool sleep 1
+
+xdotool key --window $WID M sleep 1
+xdotool mousemove --window $WID 1900 1 sleep 0.5 mousedown --window $WID 1 sleep 0.5 
+xdotool mousemove --window $WID 1 1060 sleep 0.5 mouseup --window $WID 1 sleep 0.5
+xdotool mousemove --window $WID 1 1080 sleep 0.5 mousedown --window $WID 1 sleep 0.5 
+xdotool mousemove_relative 790 -820 sleep 0.5 mouseup --window $WID 1 sleep 0.5
+
+xdotool sleep 0.5
+		for k in {1..8};
+		do
+		xdotool mousemove --window $WID 152 287 sleep 0.5 click --window $WID 1
+				xdotool mousemove --window $WID 1409 797 sleep 0.5 click --window $WID 1
+				xdotool mousemove --window $WID 1839 55 sleep 0.5 click --window $WID --repeat 4 --delay 300 1
+				xdotool mousemove --window $WID 3 160 sleep 0.5 click --window $WID 1 sleep 0.5
+				xdotool key --window $WID M sleep 1
+			done
+			p=370
+			t=140
+			 for k in {1..9};
+			do
+				xdotool mousemove --window $WID $p $t sleep 0.5 click --window $WID 1 
+				xdotool mousemove --window $WID 1068 900 sleep 0.5 click --window $WID 1 
+				xdotool mousemove --window $WID 1919 2 sleep 0.5 click --window $WID 1
+				s=t
+				let t=s+96
+			done
+			s=t
+			let t=s-48
+			xdotool mousemove --window $WID $p $t sleep 0.5 click --window $WID 1 
+			xdotool mousemove --window $WID 1068 900 sleep 0.5 click --window $WID 1 
+			xdotool mousemove --window $WID 1919 2 sleep 0.5 click --window $WID 1
+			f=p
+			let p=f+96
+			for z in {1..8};
+			do
+				t=150
+				 for k in {1..9};
+				do
+					xdotool mousemove --window $WID $p $t sleep 0.5 click --window $WID 1 
+					xdotool mousemove --window $WID 1068 900 sleep 0.5 click --window $WID 1
+					xdotool mousemove --window $WID 1919 2 sleep 0.5 click --window $WID 1
+					s=t
+					let t=s+96
+				done
+				s=t
+				let t=s-48
+				xdotool mousemove --window $WID $p $t sleep 0.5 click --window $WID 1 
+				xdotool mousemove --window $WID 1068 900 sleep 0.5 click --window $WID 1 
+				xdotool mousemove --window $WID 1919 2 sleep 0.5 click --window $WID 1
+				f=p
+				let p=f+98
+			done
+			for z in {1..5};
+			do
+				t=150
+				 for k in {1..9};
+				do
+					xdotool mousemove --window $WID $p $t sleep 0.5 click --window $WID 1 
+					xdotool mousemove --window $WID 1068 900 sleep 0.5 click --window $WID 1
+					xdotool mousemove --window $WID 1919 2 sleep 0.5 click --window $WID 1
+					s=t
+					let t=s+96
+				done
+				f=p
+				let p=f+96
+			done
+xdotool sleep 0.5
+xdotool mousemove --window $WID 1839 55 sleep 0.5 click --window $WID --repeat 4 --delay 300 1
+xdotool mousemove --window $WID 3 160 sleep 0.5 click --window $WID 1 sleep 0.5

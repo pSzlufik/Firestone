@@ -1,0 +1,55 @@
+for i in {1..100};
+do
+	xdotool sleep 0.5
+
+	./CampaignLoot
+	xdotool sleep 1
+
+	./Engineer
+	xdotool sleep 1
+
+	./Expeditions
+	xdotool sleep 1
+
+	./GuardianVerm
+	xdotool sleep 1
+
+	./Map
+	xdotool sleep 1
+
+	./Tavern
+	xdotool sleep 1
+
+	./SwapServersDown
+	xdotool sleep 1
+
+	./Alchemy
+	xdotool sleep 1
+
+	./CampaignLoot
+	xdotool sleep 1
+
+	./CampaignWarfront
+	xdotool sleep 1
+
+	./Engineer
+	xdotool sleep 1
+
+	./Expeditions
+	xdotool sleep 1
+
+	./GuardianVerm
+	xdotool sleep 1
+
+	./Map
+	xdotool sleep 1
+
+	./Oracle
+	xdotool sleep 1
+
+	./Tavern
+	xdotool sleep 1
+
+	./SwapServersUp
+	xdotool sleep 0.5
+done

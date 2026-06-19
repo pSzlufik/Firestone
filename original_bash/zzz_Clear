@@ -1,0 +1,35 @@
+chmod +x 1_FullRun
+chmod +x Alchemy
+chmod +x CampaignLoot
+chmod +x CampaignWarfront
+chmod +x Climbup
+chmod +x Engineer
+chmod +x Expeditions
+chmod +x GuardianGrace
+chmod +x GuardianVerm
+chmod +x Library26
+chmod +x Library27
+chmod +x LibraryScroll
+chmod +x Map
+chmod +x Oracle
+chmod +x Tavern
+chmod +x SwapServersDown
+chmod +x SwapServersUp
+sed -i 's/\r//' 1_FullRun
+sed -i 's/\r//' Alchemy
+sed -i 's/\r//' CampaignLoot
+sed -i 's/\r//' CampaignWarfront
+sed -i 's/\r//' Climbup
+sed -i 's/\r//' Engineer
+sed -i 's/\r//' Expeditions
+sed -i 's/\r//' GuardianGrace
+sed -i 's/\r//' GuardianVerm
+sed -i 's/\r//' Library26
+sed -i 's/\r//' Library27
+sed -i 's/\r//' LibraryScroll
+sed -i 's/\r//' Map
+sed -i 's/\r//' Oracle
+sed -i 's/\r//' Tavern
+sed -i 's/\r//' SwapServersDown
+sed -i 's/\r//' SwapServersUp
+

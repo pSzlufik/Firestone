@@ -1,0 +1,55 @@
+run () {
+
+for i in {1..$1};
+do
+	xdotool sleep 0.5
+
+	exped
+	xdotool sleep 0.5
+
+	guardian 1
+	xdotool sleep 0.5
+	
+	library 27
+	xdotool sleep 0.5
+
+	map
+	xdotool sleep 0.5
+
+	tavern
+	xdotool sleep 0.5
+
+	swap servers 27 26
+	xdotool sleep 0.5
+
+	alchemy
+	xdotool sleep 0.5
+
+	campaign_loot
+	xdotool sleep 0.5
+
+	engi
+	xdotool sleep 0.5
+
+	exped
+	xdotool sleep 0.5
+
+	guardian 2
+	xdotool sleep 0.5
+
+	library 26
+	xdotool sleep 0.5
+
+	map
+	xdotool sleep 0.5
+
+	./Oracle
+	xdotool sleep 0.5
+
+	./Tavern
+	xdotool sleep 0.5
+
+	./SwapServersUp
+	xdotool sleep 0.5
+done
+}	

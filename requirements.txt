@@ -1,0 +1,9 @@
+# Core automation
+pyautogui>=0.9.54
+
+# Window detection on Windows / macOS (pyautogui pulls a version in too, but be explicit)
+pygetwindow>=0.0.9
+
+# Optional: lets the setup GUI capture a point the instant you press F8
+# (without it, capture falls back to a 3-second countdown).
+keyboard>=0.13.5

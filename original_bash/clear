@@ -1,0 +1,16 @@
+script fs.log
+chmod +x DFSD.sh
+sed -i 's/\r//' DFSD.sh
+chmod +x run.sh
+sed -i 's/\r//' run.sh
+
+script fs.log
+chmod +x debug.sh
+sed -i 's/\r//' debug.sh
+
+
+source DFSD.sh
+run 1 1 60 4 "0;0;0" "1;14;16" 2 299 4 "1;0;0" "3;1;2" 
+
+source debug.sh
+run 1 1 60 2 "0;0;0" "1;14;16" 2 300 2 "1;0;0" "3;1;2"

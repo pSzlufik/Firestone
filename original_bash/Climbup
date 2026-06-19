@@ -1,0 +1,18 @@
+xdotool search --name 'Firestone' windowactivate sleep 1
+WID=$(xdotool getactivewindow)
+xdotool sleep 1
+xdotool key --window $WID u sleep 1
+for i in {1..200}
+do
+xdotool mousemove --window $WID 1775 195 sleep 0.5 mousedown --window $WID 1
+for i in {1..6}
+do
+	xdotool sleep 2
+	xdotool mouseup --window $WID 1
+	xdotool mousemove_relative 0 120 sleep 0.5 mousedown --window $WID 1
+	xdotool sleep 1
+	xdotool mousemove 859 485 sleep 0.5 mousedown --window $WID 1
+	xdotool sleep 45
+done
+xdotool sleep 1
+done

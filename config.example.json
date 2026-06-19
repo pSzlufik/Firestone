@@ -1,0 +1,125 @@
+{
+  "window_title": "Firestone",
+  "reference_size": [1920, 1080],
+  "timing": {
+    "global_multiplier": 1.0,
+    "move_duration": 0.0,
+    "short": 0.15,
+    "medium": 0.25,
+    "key": 0.4,
+    "long_fight": 50,
+    "server_swap_wait": 90
+  },
+  "points": {
+    "reset_close": [1840, 50],
+    "reset_home": [10, 160],
+
+    "guardian_confirm": [1160, 800],
+
+    "exped_open": [1856, 469],
+    "exped_select": [334, 376],
+    "exped_start": [1325, 317],
+
+    "lib_open_tree": [1800, 630],
+    "lib_top": [1130, 80],
+    "lib_tab_right": [1270, 990],
+    "lib_tab_left": [590, 990],
+    "lib_confirm_upgrade": [750, 790],
+    "lib_close": [20, 20],
+    "lib_corner": [1, 1],
+    "lib_middle_x_probe": [650, 520],
+
+    "tavern_open": [1860, 212],
+    "tavern_collect": [700, 960],
+    "tavern_tab": [1720, 50],
+    "tavern_claim": [500, 570],
+
+    "campaign_menu": [1840, 610],
+    "campaign_loot_collect": [160, 1000],
+    "campaign_fight_select": [1020, 630],
+    "campaign_fight_start": [600, 950],
+    "campaign_fight_corner": [25, 160],
+    "campaign_fight_collect": [500, 790],
+    "campaign_fight_next": [960, 950],
+
+    "engi_open": [1860, 212],
+    "engi_b": [1280, 830],
+    "engi_c": [580, 539],
+    "engi_d": [1625, 720],
+
+    "alch_db": [950, 800],
+    "alch_dust": [1300, 800],
+    "alch_coins": [1650, 800],
+
+    "oracle_solar": [820, 430],
+    "oracle_lunar": [1170, 880],
+    "oracle_comet": [1620, 510],
+    "oracle_gifts2": [1170, 510],
+    "oracle_gifts": [1620, 880],
+
+    "swap_menu": [1840, 50],
+    "swap_servers_btn": [1500, 620],
+    "swap_favorites": [1300, 170],
+    "swap_list": [1180, 160],
+    "swap_confirm": [1110, 720],
+
+    "map_collect_mission": [150, 290],
+    "map_collect_claim": [1410, 800],
+    "map_collect_close": [1, 1070],
+    "map_start_confirm": [1070, 900],
+    "map_start_corner": [1920, 10]
+  },
+  "arrays": {
+    "guardian_pos": [[750, 1000], [900, 1000], [1050, 1000], [1200, 1000]],
+    "swap_favorites_pos": [[520, 330], [1300, 330], [520, 520], [1300, 520], [520, 700], [1300, 700]],
+    "fs_rows": [260, 400, 520, 640, 780],
+    "fs_cols_left": [220, 700, 1200, 1690],
+    "fs_cols_right": [20, 520, 990],
+    "fs_middle_x": 650,
+    "fs_tree_patterns": [
+      "1;2", "1;4", "2;1", "2;3", "2;5", "3;2", "3;4", "4;3", "5;2", "5;4", "6;3", "7;1", "7;3", "7;5", "8;2", "8;4",
+      "1;3", "2;2", "2;4", "3;1", "3;3", "3;5", "4;3", "5;2", "5;4", "6;2", "6;4", "7;2", "7;4", "8;1", "8;3", "8;5",
+      "1;1", "1;3", "1;5", "2;2", "2;4", "3;3", "4;3", "5;2", "5;4", "6;2", "6;4", "7;2", "7;4", "8;1", "8;3", "8;5"
+    ]
+  },
+  "map": {
+    "drag_start": [1900, 1],
+    "drag_end": [1, 1080],
+    "drag2_start": [1, 1080],
+    "drag2_rel": [790, -840],
+    "grid_start_x": 370,
+    "grid_start_y": 140,
+    "grid_step_y": 96,
+    "grid_step_x_first": 96,
+    "grid_step_x_main": 98,
+    "grid_step_x_last": 96
+  },
+  "profiles": {
+    "default": {
+      "reps": 200,
+      "starting_server": 1,
+      "lvl": 200,
+      "guardian_no": 3,
+      "alchemy": "1;0;0",
+      "fs_tree": "4;15;16",
+      "swap_server": 2,
+      "swap_lvl": 200,
+      "swap_guardian": 3,
+      "swap_alchemy": "1;0;0",
+      "swap_fs_tree": "5;14;15"
+    },
+    "single_no_swap": {
+      "reps": 1,
+      "starting_server": 1,
+      "lvl": 200,
+      "guardian_no": 1,
+      "alchemy": "0;0;0",
+      "fs_tree": "0;0;0",
+      "swap_server": 0,
+      "swap_lvl": 0,
+      "swap_guardian": 0,
+      "swap_alchemy": "0;0;0",
+      "swap_fs_tree": "0;0;0"
+    }
+  }
+}
