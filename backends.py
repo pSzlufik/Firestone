@@ -41,6 +41,62 @@ def _match_windows(title):
     return exact or wins
 
 
+_fg_api_ready = False
+
+
+def _force_foreground(hwnd):
+    """Reliably bring a window to the foreground on Windows.
+
+    Plain SetForegroundWindow is blocked for background processes, so we
+    temporarily attach our input thread to the current foreground thread (the
+    standard AttachThreadInput trick) — without this the game never gets focus
+    and wheel/keyboard input is ignored."""
+    global _fg_api_ready
+    import ctypes
+    from ctypes import wintypes
+
+    u = ctypes.windll.user32
+    k = ctypes.windll.kernel32
+    if not _fg_api_ready:
+        u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, wintypes.LPDWORD]
+        u.GetWindowThreadProcessId.restype = wintypes.DWORD
+        u.GetForegroundWindow.restype = wintypes.HWND
+        u.SetForegroundWindow.argtypes = [wintypes.HWND]
+        u.BringWindowToTop.argtypes = [wintypes.HWND]
+        u.IsIconic.argtypes = [wintypes.HWND]
+        u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.SetFocus.argtypes = [wintypes.HWND]
+        u.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        _fg_api_ready = True
+
+    SW_RESTORE = 9
+    if u.IsIconic(hwnd):
+        u.ShowWindow(hwnd, SW_RESTORE)
+    fg = u.GetForegroundWindow()
+    if fg == hwnd:
+        return
+    cur = k.GetCurrentThreadId()
+    tgt = u.GetWindowThreadProcessId(hwnd, None)
+    fgt = u.GetWindowThreadProcessId(fg, None) if fg else 0
+    attached = []
+    try:
+        if fgt and fgt != cur:
+            u.AttachThreadInput(cur, fgt, True)
+            attached.append(fgt)
+        if tgt and tgt != cur:
+            u.AttachThreadInput(cur, tgt, True)
+            attached.append(tgt)
+        u.BringWindowToTop(hwnd)
+        u.SetForegroundWindow(hwnd)
+        try:
+            u.SetFocus(hwnd)
+        except Exception:
+            pass
+    finally:
+        for t in attached:
+            u.AttachThreadInput(cur, t, False)
+
+
 # --------------------------------------------------------------------------- #
 #  Foreground (pyautogui) — moves the real cursor
 # --------------------------------------------------------------------------- #
@@ -72,13 +128,22 @@ class ForegroundBackend:
         if gw is None:
             return
         wins = _match_windows(self.title)
-        if wins:
+        if not wins:
+            return
+        w = wins[0]
+        hwnd = getattr(w, "_hWnd", None)
+        if hwnd and sys.platform.startswith("win"):
             try:
-                if wins[0].isMinimized:
-                    wins[0].restore()
-                wins[0].activate()
+                _force_foreground(hwnd)
+                return
             except Exception:
                 pass
+        try:                                   # non-Windows / fallback
+            if w.isMinimized:
+                w.restore()
+            w.activate()
+        except Exception:
+            pass
 
     def move(self, rx, ry):
         x, y = self._screen(rx, ry)
@@ -94,7 +159,15 @@ class ForegroundBackend:
 
     def scroll(self, rx, ry, notches):
         x, y = self._screen(rx, ry)
-        pyautogui.scroll(notches, x=x, y=y)
+        # Move there first (handles multi-monitor / negative coords), then scroll
+        # at the current position. pyautogui passes its arg straight as the wheel
+        # delta (120 = one notch) and clamps x/y to the PRIMARY monitor — so we
+        # must NOT pass x/y, and must scale by 120 to get real notches.
+        pyautogui.moveTo(x, y, duration=self.move_dur)
+        notches = int(notches)
+        step = 120 if notches >= 0 else -120
+        for _ in range(abs(notches)):
+            pyautogui.scroll(step)
 
     def tap_key(self, token):
         if len(token) == 1 and token.isalpha() and token.isupper():

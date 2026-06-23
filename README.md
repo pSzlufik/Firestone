@@ -73,8 +73,12 @@ name.
   cursor to the spot in-game and hold still a moment — it captures automatically
   (dwell-to-capture; tune `timing.capture_dwell`).
 - **scroll** — "Add scroll", name it, capture a position, then set the **amount**
-  (notches; + scrolls up, − scrolls down). Useful for navigating long panels /
-  trees.
+  (notches; + scrolls up, − scrolls down). Optionally tick *Click before
+  scrolling* to focus the panel first. (Note: some games ignore wheel events
+  entirely — if so, use a **drag** instead.)
+- **drag** — "Add drag", name it, capture a **start** then an **end** position.
+  The bot presses at start, moves smoothly, and releases at end — the reliable
+  way to scroll lists in games that ignore the mouse wheel.
 - **area** — click "Add area", name it, then **drag a rectangle** over the
   region on a translucent overlay. The bot sweeps that rectangle as a grid of
   clicks (top-left → bottom-right) stepping by an **offset** (dx, dy) you set —

@@ -93,6 +93,8 @@ class SetupApp:
         self._capture_cb = None
         self._capture_timer = None
         self.value_labels = {}
+        self._current = None        # name of the element shown in the detail panel
+        self._rebuilding = False    # guard so listbox rebuilds don't blank the panel
 
         root.title("Firestone — setup")
         root.geometry("900x800")
@@ -323,7 +325,7 @@ class SetupApp:
         ttk.Label(left, text="Your elements", font=("", 9, "bold")).pack(anchor="w")
         self.elem_list = tk.Listbox(left, width=26, height=22)
         self.elem_list.pack(fill="y", expand=True, pady=4)
-        self.elem_list.bind("<<ListboxSelect>>", lambda e: self._show_element_details())
+        self.elem_list.bind("<<ListboxSelect>>", self._on_elem_select)
         row = ttk.Frame(left)
         row.pack(fill="x")
         ttk.Button(row, text="Add point", width=9, command=self.add_point_element).pack(side="left")
@@ -331,30 +333,51 @@ class SetupApp:
         row2 = ttk.Frame(left)
         row2.pack(fill="x", pady=2)
         ttk.Button(row2, text="Add scroll", width=9, command=self.add_scroll_element).pack(side="left")
-        ttk.Button(row2, text="Copy", width=9, command=self.copy_element).pack(side="left", padx=4)
-        ttk.Button(left, text="Delete element", command=self.delete_element).pack(fill="x", pady=2)
+        ttk.Button(row2, text="Add drag", width=9, command=self.add_drag_element).pack(side="left", padx=4)
+        row3 = ttk.Frame(left)
+        row3.pack(fill="x")
+        ttk.Button(row3, text="Copy", width=9, command=self.copy_element).pack(side="left")
+        ttk.Button(row3, text="Delete", width=9, command=self.delete_element).pack(side="left", padx=4)
 
         self.detail = ttk.LabelFrame(parent, text="Element details", padding=10)
         self.detail.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         self._reload_elements()
 
     def _reload_elements(self):
+        """Rebuild the list, preserving the current selection (so editing an
+        element's coords doesn't make the detail panel vanish)."""
+        self._rebuilding = True
         self.elem_list.delete(0, "end")
-        for name, el in self.cfg["elements"].items():
+        names = list(self.cfg["elements"])
+        for name in names:
+            el = self.cfg["elements"][name]
             tag = el["type"]
             if tag == "area":
                 tag = f"area {len(area_cells(el))} cells"
             elif tag == "scroll":
                 tag = f"scroll {el.get('amount', 0)}"
+            elif tag == "drag":
+                tag = "drag"
             desc = el.get("description", "").strip().replace("\n", " ")
             snippet = f"  — {desc[:28]}" if desc else ""
             self.elem_list.insert("end", f"{name}  ({tag}){snippet}")
+        if self._current in names:
+            i = names.index(self._current)
+            self.elem_list.selection_set(i)
+            self.elem_list.see(i)
+        self._rebuilding = False
 
-    def _selected_element_name(self):
+    def _on_elem_select(self, _evt=None):
+        if self._rebuilding:
+            return
         sel = self.elem_list.curselection()
         if not sel:
-            return None
-        return self.elem_list.get(sel[0]).split("  (")[0]
+            return
+        self._current = self.elem_list.get(sel[0]).split("  (")[0]
+        self._show_element_details()
+
+    def _selected_element_name(self):
+        return self._current if self._current in self.cfg["elements"] else None
 
     def add_point_element(self):
         name = simpledialog.askstring("New point", "Name for this point element:", parent=self.root)
@@ -400,6 +423,29 @@ class SetupApp:
             self._select_element(name)
         self._arm(done, name)
 
+    def add_drag_element(self):
+        name = simpledialog.askstring("New drag", "Name for this drag element:", parent=self.root)
+        if not name:
+            return
+        self.cfg["elements"][name] = {"type": "drag", "start": [0, 0], "end": [0, 0],
+                                      "description": ""}
+        self._reload_elements()
+
+        def got_end(ref2):
+            self.cfg["elements"][name]["end"] = ref2
+            self._reload_elements()
+            self._select_element(name)
+            self.status.config(text=f"Drag '{name}' set (start + end).", foreground="#161")
+
+        def got_start(ref1):
+            self.cfg["elements"][name]["start"] = ref1
+            self.status.config(text="Now capture the END position (where to release).",
+                               foreground="#7a1f2b")
+            self._arm(got_end, f"{name} end")
+
+        self.status.config(text="Capture the START position (where to press).", foreground="#7a1f2b")
+        self._arm(got_start, f"{name} start")
+
     def copy_element(self):
         name = self._selected_element_name()
         if not name:
@@ -423,6 +469,7 @@ class SetupApp:
             return
         if messagebox.askyesno("Delete", f"Delete element '{name}'?"):
             self.cfg["elements"].pop(name, None)
+            self._current = None
             self._reload_elements()
             for w in self.detail.winfo_children():
                 w.destroy()
@@ -430,8 +477,12 @@ class SetupApp:
     def _select_element(self, name):
         names = list(self.cfg["elements"])
         if name in names:
+            self._current = name
+            self._rebuilding = True
             self.elem_list.selection_clear(0, "end")
             self.elem_list.selection_set(names.index(name))
+            self.elem_list.see(names.index(name))
+            self._rebuilding = False
             self._show_element_details()
 
     def _show_element_details(self):
@@ -466,6 +517,25 @@ class SetupApp:
                     self._reload_elements()
                     self.status.config(text=f"Scroll amount set to {el['amount']}.", foreground="#161")
                 ttk.Button(sr, text="Apply", command=apply_amount).pack(side="left")
+                cbv = tk.BooleanVar(value=bool(el.get("click_first", False)))
+                ttk.Checkbutton(self.detail, text="Click at the position before scrolling "
+                                "(helps focus the panel)", variable=cbv,
+                                command=lambda: el.__setitem__("click_first", cbv.get())
+                                ).pack(anchor="w", pady=2)
+            self._desc_editor(el)
+            return
+
+        if el["type"] == "drag":
+            self._coord_row("start", el["start"])
+            self._coord_row("end", el["end"])
+            bar = ttk.Frame(self.detail); bar.pack(anchor="w", pady=2)
+            ttk.Button(bar, text="Recapture start", command=lambda: self._arm(
+                lambda ref: (el.__setitem__("start", ref), self._show_element_details()),
+                f"{name} start")).pack(side="left")
+            ttk.Button(bar, text="Recapture end", command=lambda: self._arm(
+                lambda ref: (el.__setitem__("end", ref), self._show_element_details()),
+                f"{name} end")).pack(side="left", padx=4)
+            ttk.Button(bar, text="Show", command=lambda: self._show_drag(el)).pack(side="left")
             self._desc_editor(el)
             return
 
@@ -562,6 +632,18 @@ class SetupApp:
                                foreground="#161")
         txt.bind("<FocusOut>", apply)
         ttk.Button(self.detail, text="Apply description", command=apply).pack(anchor="w", pady=2)
+
+    def _show_drag(self, el):
+        if self.gamewin is None:
+            messagebox.showwarning("No window", "Pick the game window first.")
+            return
+        self._clear_markers()
+        sx, sy = self.gamewin.to_screen(el["start"][0], el["start"][1])
+        ex, ey = self.gamewin.to_screen(el["end"][0], el["end"][1])
+        self._make_marker(sx, sy, "start", "#1f9d55")
+        self._make_marker(ex, ey, "end", "#e02020")
+        self.root.after(3000, self._clear_markers)
+        self.status.config(text="green = drag start, red = drag end.")
 
     def show_area(self, el):
         if self.gamewin is None:

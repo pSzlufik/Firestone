@@ -214,14 +214,19 @@ class Firestone:
         self.backend.tap_key(k)
         self.sleep(self.t_key if after is None else after)
 
-    def drag(self, x1, y1, x2, y2, relative=False):
+    def drag(self, x1, y1, x2, y2, relative=False, steps=14):
         if relative:  # convert a reference-space relative move to absolute
             x2, y2 = x1 + x2, y1 + y2
         self.backend.move(x1, y1)
         self.sleep(self.t_med)
         self.backend.mouse_down(x1, y1)
         self.sleep(self.t_med)
-        self.backend.move(x2, y2)
+        # Move in small steps so the game sees a real drag, not a teleport.
+        for i in range(1, steps + 1):
+            ix = x1 + (x2 - x1) * i / steps
+            iy = y1 + (y2 - y1) * i / steps
+            self.backend.move(int(round(ix)), int(round(iy)))
+            self.sleep(0.012)
         self.sleep(self.t_med)
         self.backend.mouse_up(x2, y2)
         self.sleep(self.t_short)
@@ -265,7 +270,14 @@ class Firestone:
             return
         if el["type"] == "scroll":
             x, y = el["pos"]
+            if el.get("click_first"):
+                self.click(x, y, after=self.t_short)   # engage/focus the area first
             self.scroll(x, y, int(el.get("amount", 0)))
+            return
+        if el["type"] == "drag":
+            sx, sy = el["start"]
+            ex, ey = el["end"]
+            self.drag(sx, sy, ex, ey)
             return
         if el["type"] == "area":
             meantime = el.get("meantime", [])
