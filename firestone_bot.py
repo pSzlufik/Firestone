@@ -263,6 +263,10 @@ class Firestone:
             x, y = el["pos"]
             self.click(x, y, after=self.t_short)
             return
+        if el["type"] == "scroll":
+            x, y = el["pos"]
+            self.scroll(x, y, int(el.get("amount", 0)))
+            return
         if el["type"] == "area":
             meantime = el.get("meantime", [])
             cells = self._area_cells(el)

@@ -16,16 +16,19 @@ Tabs:
 
   SEQUENCE  Compose an action cycle from drop-downs (now including 'element').
 
-Capture: arm with a Capture button, hover the spot in-game, press F8 (global, if
-the optional `keyboard` package is installed) or wait for the countdown.
+Capture: click a Capture button, move the cursor to the spot in-game and hold
+still for a moment — it grabs automatically (dwell-to-capture). Tune the dwell
+with timing.capture_dwell in the config.
 
 Run what you build:
     python firestone_bot.py --element <name> --reps N
     python firestone_bot.py --sequence <name> --reps N
 """
 
+import copy
 import json
 import os
+import time
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
@@ -183,19 +186,40 @@ class SetupApp:
             return
         self._capture_cb = callback
         self._armed = True
-        self._countdown(6.0 if keyboard is not None else 3.0, label)
+        # Dwell-to-capture: move the cursor to the spot, hold still briefly -> grab.
+        # No global hotkey needed (F8 hooks are unreliable). F8 still works as an
+        # instant trigger if the keyboard hook happens to fire.
+        t = self.cfg.get("timing", {})
+        self._dwell = float(t.get("capture_dwell", 0.35))
+        self._arm_deadline = time.time() + float(t.get("capture_timeout", 10.0))
+        self._arm_origin = pyautogui.position()
+        self._last_pos = self._arm_origin
+        self._still_since = None
+        self._moved = False
+        self._poll_capture(label)
 
-    def _countdown(self, remaining, label):
+    def _poll_capture(self, label):
         if not self._armed:
             return
-        if remaining <= 0:
+        now = time.time()
+        pos = pyautogui.position()
+        if (pos.x, pos.y) != (self._last_pos.x, self._last_pos.y):
+            self._last_pos = pos
+            self._still_since = now
+            if abs(pos.x - self._arm_origin.x) + abs(pos.y - self._arm_origin.y) > 25:
+                self._moved = True
+        elif self._still_since is None:
+            self._still_since = now
+        # Capture once the cursor has moved to the target and settled there.
+        if self._moved and self._still_since and (now - self._still_since) >= self._dwell:
             self._do_capture()
             return
-        tip = "press F8 or " if keyboard is not None else ""
-        self.status.config(
-            text=f"Capturing '{label}' — hover the spot in-game ({tip}{remaining:0.1f}s)…",
-            foreground="#7a1f2b")
-        self._capture_timer = self.root.after(100, lambda: self._countdown(remaining - 0.1, label))
+        if now >= self._arm_deadline:           # safety backstop
+            self._do_capture()
+            return
+        hint = "move to the spot, then hold still" if not self._moved else "hold still…"
+        self.status.config(text=f"Capturing '{label}': {hint}", foreground="#7a1f2b")
+        self._capture_timer = self.root.after(40, lambda: self._poll_capture(label))
 
     def _on_hotkey(self):
         self.root.after(0, self._do_capture)
@@ -218,22 +242,50 @@ class SetupApp:
         self.show_marker(ref)
         self.status.config(text=f"Captured {ref}  (remember to Save).", foreground="#161")
 
+    @staticmethod
+    def _virtual_screen():
+        """(left, top, width, height) of the whole virtual desktop (all monitors)."""
+        try:
+            import ctypes
+            u = ctypes.windll.user32
+            # SM_XVIRTUALSCREEN=76, Y=77, CX=78, CY=79
+            x, y = u.GetSystemMetrics(76), u.GetSystemMetrics(77)
+            w, h = u.GetSystemMetrics(78), u.GetSystemMetrics(79)
+            if w and h:
+                return x, y, w, h
+        except Exception:
+            pass
+        return None
+
     def capture_area_rect(self, callback):
-        """Translucent full-screen overlay; user drags a rectangle.
+        """Translucent overlay spanning ALL monitors; user drags a rectangle.
         `callback(topleft_ref, bottomright_ref)` gets the corners."""
         if self.gamewin is None:
             messagebox.showwarning("No window", "Pick the game window first.")
             return
         ov = tk.Toplevel(self.root)
-        ov.attributes("-fullscreen", True)
+        ov.overrideredirect(True)
         ov.attributes("-topmost", True)
         try:
             ov.attributes("-alpha", 0.30)
         except Exception:
             pass
+        vs = self._virtual_screen()
+        if vs:                       # cover every monitor, wherever the game is
+            vx, vy, vw, vh = vs
+            ov.geometry(f"{vw}x{vh}+{vx}+{vy}")
+        else:                        # fallback: primary monitor
+            vx, vy = 0, 0
+            ov.attributes("-fullscreen", True)
         cv = tk.Canvas(ov, cursor="cross", bg="black", highlightthickness=0)
         cv.pack(fill="both", expand=True)
-        cv.create_text(cv.winfo_screenwidth() // 2, 30, fill="white", font=("", 14),
+        # Put the instructions over the game window so they're visible there.
+        try:
+            gl, gt, gwd, _gh = self.gamewin.rect()
+            tx, ty = gl - vx + gwd // 2, gt - vy + 30
+        except Exception:
+            tx, ty = 200, 30
+        cv.create_text(tx, ty, fill="white", font=("", 14),
                        text="Drag a rectangle over the area to sweep — Esc to cancel")
         st = {"sx": None, "sy": None, "cx": None, "cy": None, "rect": None}
 
@@ -258,6 +310,9 @@ class SetupApp:
         cv.bind("<B1-Motion>", drag)
         cv.bind("<ButtonRelease-1>", up)
         ov.bind("<Escape>", lambda e: ov.destroy())
+        cv.bind("<ButtonPress-3>", lambda e: ov.destroy())  # right-click cancels
+        ov.lift()
+        ov.focus_force()
 
     # ===================================================================== #
     #  BUILDER tab
@@ -271,8 +326,12 @@ class SetupApp:
         self.elem_list.bind("<<ListboxSelect>>", lambda e: self._show_element_details())
         row = ttk.Frame(left)
         row.pack(fill="x")
-        ttk.Button(row, text="Add point", command=self.add_point_element).pack(side="left")
-        ttk.Button(row, text="Add area", command=self.add_area_element).pack(side="left", padx=4)
+        ttk.Button(row, text="Add point", width=9, command=self.add_point_element).pack(side="left")
+        ttk.Button(row, text="Add area", width=9, command=self.add_area_element).pack(side="left", padx=4)
+        row2 = ttk.Frame(left)
+        row2.pack(fill="x", pady=2)
+        ttk.Button(row2, text="Add scroll", width=9, command=self.add_scroll_element).pack(side="left")
+        ttk.Button(row2, text="Copy", width=9, command=self.copy_element).pack(side="left", padx=4)
         ttk.Button(left, text="Delete element", command=self.delete_element).pack(fill="x", pady=2)
 
         self.detail = ttk.LabelFrame(parent, text="Element details", padding=10)
@@ -285,6 +344,8 @@ class SetupApp:
             tag = el["type"]
             if tag == "area":
                 tag = f"area {len(area_cells(el))} cells"
+            elif tag == "scroll":
+                tag = f"scroll {el.get('amount', 0)}"
             desc = el.get("description", "").strip().replace("\n", " ")
             snippet = f"  — {desc[:28]}" if desc else ""
             self.elem_list.insert("end", f"{name}  ({tag}){snippet}")
@@ -325,6 +386,37 @@ class SetupApp:
         self.status.config(text="Drag a rectangle over the area in-game…", foreground="#7a1f2b")
         self.capture_area_rect(got_rect)
 
+    def add_scroll_element(self):
+        name = simpledialog.askstring("New scroll", "Name for this scroll element:", parent=self.root)
+        if not name:
+            return
+        self.cfg["elements"][name] = {"type": "scroll", "pos": [0, 0],
+                                      "amount": 150, "description": ""}
+        self._reload_elements()
+
+        def done(ref):
+            self.cfg["elements"][name]["pos"] = ref
+            self._reload_elements()
+            self._select_element(name)
+        self._arm(done, name)
+
+    def copy_element(self):
+        name = self._selected_element_name()
+        if not name:
+            messagebox.showinfo("Copy", "Select an element to copy first.")
+            return
+        new = simpledialog.askstring("Copy element", f"Name for the copy of '{name}':",
+                                     parent=self.root)
+        if not new:
+            return
+        if new in self.cfg["elements"]:
+            messagebox.showwarning("Exists", f"An element named '{new}' already exists.")
+            return
+        self.cfg["elements"][new] = copy.deepcopy(self.cfg["elements"][name])
+        self._reload_elements()
+        self._select_element(new)
+        self.status.config(text=f"Copied '{name}' -> '{new}'.", foreground="#161")
+
     def delete_element(self):
         name = self._selected_element_name()
         if not name:
@@ -351,20 +443,35 @@ class SetupApp:
         el = self.cfg["elements"][name]
         ttk.Label(self.detail, text=name, font=("", 11, "bold")).pack(anchor="w")
 
-        if el["type"] == "point":
-            ttk.Label(self.detail, text=f"position: {el['pos']}").pack(anchor="w", pady=4)
-            bar = ttk.Frame(self.detail); bar.pack(anchor="w")
+        if el["type"] in ("point", "scroll"):
+            self._coord_row("position", el["pos"])
+            bar = ttk.Frame(self.detail); bar.pack(anchor="w", pady=2)
             ttk.Button(bar, text="Recapture", command=lambda: self._arm(
                 lambda ref: (el.__setitem__("pos", ref), self._show_element_details()), name)
                 ).pack(side="left")
             ttk.Button(bar, text="Test", command=lambda: self.test_point(el["pos"])).pack(side="left", padx=4)
             ttk.Button(bar, text="Show", command=lambda: self.show_marker(el["pos"], name)).pack(side="left")
+            if el["type"] == "scroll":
+                sr = ttk.Frame(self.detail); sr.pack(anchor="w", pady=6)
+                ttk.Label(sr, text="Scroll amount (notches, + up / - down):").pack(side="left")
+                av = tk.StringVar(value=str(el.get("amount", 0)))
+                ttk.Entry(sr, textvariable=av, width=7).pack(side="left", padx=4)
+
+                def apply_amount():
+                    try:
+                        el["amount"] = int(av.get())
+                    except ValueError:
+                        messagebox.showwarning("Bad amount", "Amount must be a whole number.")
+                        return
+                    self._reload_elements()
+                    self.status.config(text=f"Scroll amount set to {el['amount']}.", foreground="#161")
+                ttk.Button(sr, text="Apply", command=apply_amount).pack(side="left")
             self._desc_editor(el)
             return
 
-        # area
-        ttk.Label(self.detail, text=f"top-left: {el['topleft']}    bottom-right: {el['bottomright']}"
-                  ).pack(anchor="w", pady=2)
+        # area — editable corners
+        self._coord_row("top-left", el["topleft"], on_change=self._reload_elements)
+        self._coord_row("bottom-right", el["bottomright"], on_change=self._reload_elements)
         ttk.Button(self.detail, text="Recapture rectangle",
                    command=lambda: self.capture_area_rect(
                        lambda tl, br: (el.update(topleft=tl, bottomright=br),
@@ -418,6 +525,29 @@ class SetupApp:
         ttk.Button(mbar, text="Show grid", command=lambda: self.show_area(el)).pack(side="left", padx=4)
         self._desc_editor(el)
 
+    def _coord_row(self, label, coord_list, on_change=None):
+        """Editable x/y fields bound to a [x, y] list (edited in place)."""
+        fr = ttk.Frame(self.detail); fr.pack(anchor="w", pady=2)
+        ttk.Label(fr, text=f"{label}:  x").pack(side="left")
+        xv = tk.StringVar(value=str(coord_list[0]))
+        ttk.Entry(fr, textvariable=xv, width=6).pack(side="left", padx=2)
+        ttk.Label(fr, text="y").pack(side="left")
+        yv = tk.StringVar(value=str(coord_list[1]))
+        ttk.Entry(fr, textvariable=yv, width=6).pack(side="left", padx=2)
+
+        def apply(*_):
+            try:
+                coord_list[0], coord_list[1] = int(xv.get()), int(yv.get())
+            except ValueError:
+                messagebox.showwarning("Bad value", "Coordinates must be whole numbers.")
+                return
+            if on_change:
+                on_change()
+            self.status.config(text=f"{label} set to {coord_list} (remember to Save).",
+                               foreground="#161")
+        ttk.Button(fr, text="Apply", command=apply).pack(side="left", padx=4)
+        ttk.Button(fr, text="Show", command=lambda: self.show_marker(coord_list)).pack(side="left")
+
     def _desc_editor(self, el):
         """A free-text description box for an element (point or area)."""
         ttk.Label(self.detail, text="Description (your own notes):",
@@ -455,7 +585,7 @@ class SetupApp:
             messagebox.showwarning("No window", "Pick the game window first.")
             return
         x, y = self.gamewin.to_screen(ref_xy[0], ref_xy[1])
-        pyautogui.moveTo(x, y, duration=0.3)
+        pyautogui.moveTo(x, y, duration=0.12)
 
     # ===================================================================== #
     #  Markers

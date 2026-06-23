@@ -64,11 +64,17 @@ per-machine), so run `build_exe.ps1` on each PC.
 The **Builder** tab in `setup_gui.py` starts empty and lets you define your own
 elements:
 
-Every element also has a free-text **Description** field, so you can jot down
-what it's for and remember later (shown as a snippet in the element list).
+Every element has a free-text **Description** field (shown as a snippet in the
+list), editable **x/y coordinate fields** so you can fine-tune positions by hand
+(not just recapture), and a **Copy** button to duplicate an element under a new
+name.
 
-- **point** — one captured coordinate. Click "Add point", name it, hover the
-  spot in-game, press F8 (or wait for the countdown).
+- **point** — one captured coordinate. Click "Add point", name it, move the
+  cursor to the spot in-game and hold still a moment — it captures automatically
+  (dwell-to-capture; tune `timing.capture_dwell`).
+- **scroll** — "Add scroll", name it, capture a position, then set the **amount**
+  (notches; + scrolls up, − scrolls down). Useful for navigating long panels /
+  trees.
 - **area** — click "Add area", name it, then **drag a rectangle** over the
   region on a translucent overlay. The bot sweeps that rectangle as a grid of
   clicks (top-left → bottom-right) stepping by an **offset** (dx, dy) you set —

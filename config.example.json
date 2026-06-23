@@ -8,7 +8,9 @@
     "medium": 0.25,
     "key": 0.4,
     "long_fight": 50,
-    "server_swap_wait": 90
+    "server_swap_wait": 90,
+    "capture_dwell": 0.35,
+    "capture_timeout": 10.0
   },
   "points": {},
   "arrays": {},
