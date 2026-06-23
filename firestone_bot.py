@@ -152,9 +152,9 @@ class GameWindow:
 class Firestone:
     def __init__(self, config, background=False):
         self.cfg = config
-        self.points = config["points"]
-        self.arrays = config["arrays"]
-        self.mapcfg = config["map"]
+        self.points = config.get("points", {})
+        self.arrays = config.get("arrays", {})
+        self.mapcfg = config.get("map", {})
         self.ref_w, self.ref_h = config["reference_size"]
         t = config["timing"]
         self.mult = t.get("global_multiplier", 1.0)

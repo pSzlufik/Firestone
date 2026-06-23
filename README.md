@@ -49,23 +49,23 @@ per-machine), so run `build_exe.ps1` on each PC.
    ```
 2. Start Firestone (any resolution). Make sure its window title contains
    `Firestone`.
-3. Calibrate:
+3. Open the setup GUI:
    ```
    python setup_gui.py
    ```
-   - Click **Detect window**.
-   - For each point: click **Capture**, hover the matching spot in the game,
-     press **F8** (or wait for the 3-second countdown). **Test** moves your
-     mouse to a stored point so you can confirm it.
-   - Click **Save config.json**.
+   - Pick the **game window** from the dropdown (it auto-selects the ~16:9 one).
+   - Build your **points** and **areas** in the **Builder** tab (see below),
+     give each a description, then click **Save config.json**.
 
-   You don't have to capture every point in one go — the defaults are a sane
-   1920×1080 starting set. Fix the ones that are off for your layout.
+   The config starts empty — you define every position yourself in the Builder.
 
 ## Build your own positions (Builder tab)
 
 The **Builder** tab in `setup_gui.py` starts empty and lets you define your own
 elements:
+
+Every element also has a free-text **Description** field, so you can jot down
+what it's for and remember later (shown as a snippet in the element list).
 
 - **point** — one captured coordinate. Click "Add point", name it, hover the
   spot in-game, press F8 (or wait for the countdown).

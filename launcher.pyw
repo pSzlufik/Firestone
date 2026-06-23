@@ -68,9 +68,10 @@ class Launcher:
 
         ttk.Button(frm, text="⚙ Setup", width=9, command=self.open_setup).grid(row=0, column=0, padx=3)
 
-        # Run target = profiles + sequences, prefixed so we know which is which.
-        targets = [f"profile: {n}" for n in cfg.get("profiles", {})]
+        # Run target = elements + sequences + profiles, prefixed so we know which.
+        targets = [f"element: {n}" for n in cfg.get("elements", {})]
         targets += [f"sequence: {n}" for n in cfg.get("sequences", {})]
+        targets += [f"profile: {n}" for n in cfg.get("profiles", {})]
         self.target = ttk.Combobox(frm, width=24, state="readonly", values=targets)
         if targets:
             self.target.current(0)
@@ -120,6 +121,8 @@ class Launcher:
         args = ["firestone_bot.py"]
         if kind == "profile":
             args += ["--profile", name]
+        elif kind == "element":
+            args += ["--element", name, "--reps", str(self.reps.get())]
         else:
             args += ["--sequence", name, "--reps", str(self.reps.get())]
         if self.bg.get():

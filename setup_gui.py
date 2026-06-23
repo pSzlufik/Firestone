@@ -99,14 +99,11 @@ class SetupApp:
         nb = ttk.Notebook(root)
         nb.pack(fill="both", expand=True, padx=10, pady=(4, 0))
         self.builder_tab = ttk.Frame(nb)
-        self.points_tab = ttk.Frame(nb)
         self.seq_tab = ttk.Frame(nb)
         nb.add(self.builder_tab, text="Builder")
-        nb.add(self.points_tab, text="Points")
         nb.add(self.seq_tab, text="Sequence")
         self._build_footer()                 # status bar first (capture uses it)
         self._build_builder(self.builder_tab)
-        self._build_point_list(self.points_tab)
         self._build_sequence_editor(self.seq_tab)
 
         if keyboard is not None:
@@ -288,7 +285,9 @@ class SetupApp:
             tag = el["type"]
             if tag == "area":
                 tag = f"area {len(area_cells(el))} cells"
-            self.elem_list.insert("end", f"{name}  ({tag})")
+            desc = el.get("description", "").strip().replace("\n", " ")
+            snippet = f"  — {desc[:28]}" if desc else ""
+            self.elem_list.insert("end", f"{name}  ({tag}){snippet}")
 
     def _selected_element_name(self):
         sel = self.elem_list.curselection()
@@ -300,7 +299,7 @@ class SetupApp:
         name = simpledialog.askstring("New point", "Name for this point element:", parent=self.root)
         if not name:
             return
-        self.cfg["elements"][name] = {"type": "point", "pos": [0, 0]}
+        self.cfg["elements"][name] = {"type": "point", "pos": [0, 0], "description": ""}
         self._reload_elements()
 
         def done(ref):
@@ -317,7 +316,7 @@ class SetupApp:
         def got_rect(tl, br):
             self.cfg["elements"][name] = {
                 "type": "area", "topleft": tl, "bottomright": br,
-                "offset": [100, 100], "meantime": [],
+                "offset": [100, 100], "meantime": [], "description": "",
             }
             self._reload_elements()
             self._select_element(name)
@@ -360,6 +359,7 @@ class SetupApp:
                 ).pack(side="left")
             ttk.Button(bar, text="Test", command=lambda: self.test_point(el["pos"])).pack(side="left", padx=4)
             ttk.Button(bar, text="Show", command=lambda: self.show_marker(el["pos"], name)).pack(side="left")
+            self._desc_editor(el)
             return
 
         # area
@@ -416,6 +416,22 @@ class SetupApp:
         ttk.Button(mbar, text="Add meantime", command=add_meantime).pack(side="left")
         ttk.Button(mbar, text="Remove", command=del_meantime).pack(side="left", padx=4)
         ttk.Button(mbar, text="Show grid", command=lambda: self.show_area(el)).pack(side="left", padx=4)
+        self._desc_editor(el)
+
+    def _desc_editor(self, el):
+        """A free-text description box for an element (point or area)."""
+        ttk.Label(self.detail, text="Description (your own notes):",
+                  font=("", 9, "bold")).pack(anchor="w", pady=(12, 2))
+        txt = tk.Text(self.detail, height=4, width=46, wrap="word")
+        txt.insert("1.0", el.get("description", ""))
+        txt.pack(anchor="w", fill="x")
+
+        def apply(*_):
+            el["description"] = txt.get("1.0", "end").strip()
+            self.status.config(text="Description updated (remember to Save config.json).",
+                               foreground="#161")
+        txt.bind("<FocusOut>", apply)
+        ttk.Button(self.detail, text="Apply description", command=apply).pack(anchor="w", pady=2)
 
     def show_area(self, el):
         if self.gamewin is None:
@@ -432,60 +448,8 @@ class SetupApp:
         self.status.config(text="Blue = grid clicks, orange = meantime clicks.")
 
     # ===================================================================== #
-    #  POINTS tab (ported DFSD set)
+    #  Shared helpers
     # ===================================================================== #
-    def _build_point_list(self, parent):
-        canvas = tk.Canvas(parent, highlightthickness=0)
-        scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        inner = ttk.Frame(canvas)
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-        canvas.configure(yscrollcommand=scroll.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
-        row = 0
-        for name in self.cfg.get("points", {}):
-            self._point_row(inner, name, row)
-            row += 1
-        for arr in ARRAY_POINTS:
-            for i in range(len(self.cfg.get("arrays", {}).get(arr, []))):
-                self._array_row(inner, arr, i, row)
-                row += 1
-
-    def _point_row(self, parent, name, row):
-        ttk.Label(parent, text=name, width=24).grid(row=row, column=0, sticky="w")
-        val = ttk.Label(parent, text=str(self.cfg["points"][name]), width=12)
-        val.grid(row=row, column=1, padx=6)
-        self.value_labels[("point", name)] = val
-        ttk.Button(parent, text="Capture", width=8, command=lambda: self._arm(
-            lambda ref: self._set_point(name, ref), name)).grid(row=row, column=2)
-        ttk.Button(parent, text="Test", width=6,
-                   command=lambda: self.test_point(self.cfg["points"][name])).grid(row=row, column=3)
-        ttk.Button(parent, text="Show", width=6,
-                   command=lambda: self.show_marker(self.cfg["points"][name], name)).grid(row=row, column=4)
-
-    def _array_row(self, parent, arr, i, row):
-        ttk.Label(parent, text=f"{arr}[{i}]", width=24).grid(row=row, column=0, sticky="w")
-        val = ttk.Label(parent, text=str(self.cfg["arrays"][arr][i]), width=12)
-        val.grid(row=row, column=1, padx=6)
-        self.value_labels[("array", arr, i)] = val
-        ttk.Button(parent, text="Capture", width=8, command=lambda: self._arm(
-            lambda ref: self._set_array(arr, i, ref), f"{arr}[{i}]")).grid(row=row, column=2)
-        ttk.Button(parent, text="Test", width=6,
-                   command=lambda: self.test_point(self.cfg["arrays"][arr][i])).grid(row=row, column=3)
-        ttk.Button(parent, text="Show", width=6,
-                   command=lambda: self.show_marker(self.cfg["arrays"][arr][i], f"{arr}[{i}]")
-                   ).grid(row=row, column=4)
-
-    def _set_point(self, name, ref):
-        self.cfg["points"][name] = ref
-        self.value_labels[("point", name)].config(text=str(ref))
-
-    def _set_array(self, arr, i, ref):
-        self.cfg["arrays"][arr][i] = ref
-        self.value_labels[("array", arr, i)].config(text=str(ref))
-
     def test_point(self, ref_xy):
         if self.gamewin is None:
             messagebox.showwarning("No window", "Pick the game window first.")
