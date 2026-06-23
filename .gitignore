@@ -8,6 +8,12 @@ __pycache__/
 .venv/
 venv/
 
+# PyInstaller build artifacts (the .exe is built per-machine via build_exe.ps1)
+build/
+dist/
+*.spec
+Firestone.exe
+
 # OS junk
 Thumbs.db
 desktop.ini

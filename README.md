@@ -23,6 +23,24 @@ it in the game — no JSON editing required.
 | `config.json` | Your calibrated copy (git-ignored; created by the setup GUI). |
 | `original_bash/` | The original Linux scripts, kept for reference. |
 
+## Launcher bar (pin to taskbar)
+
+`launcher.pyw` is a small control bar — **Setup** (opens the calibration GUI),
+a profile/sequence picker with **Run** / **Stop** / a `bg` (background) toggle /
+`reps`, and a folder button.
+
+- Just run it: double-click `launcher.pyw`, or `pythonw launcher.pyw`.
+- Make a pinnable **Firestone.exe**:
+  ```
+  powershell -ExecutionPolicy Bypass -File build_exe.ps1
+  ```
+  Then right-click `Firestone.exe` → **Pin to taskbar**. (`make_shortcut.ps1`
+  drops a Desktop shortcut you can pin instead.)
+
+The `.exe` is just the launcher — Python with the dependencies installed still
+needs to be present, since it runs the scripts. It's git-ignored (built
+per-machine), so run `build_exe.ps1` on each PC.
+
 ## Setup
 
 1. Install Python 3.9+ and the dependencies:
@@ -44,12 +62,29 @@ it in the game — no JSON editing required.
    You don't have to capture every point in one go — the defaults are a sane
    1920×1080 starting set. Fix the ones that are off for your layout.
 
+## Build your own routine (Sequence editor)
+
+The **Sequence** tab in `setup_gui.py` lets you compose a custom action cycle
+from drop-downs instead of the built-in loop: pick an **action**
+(click / double click / right click / move / key / scroll / wait) and a
+**target point**, "Add step", reorder with Up/Down, name it, and **Save
+sequence**. Run it with:
+
+```
+python firestone_bot.py --sequence example_guardian --reps 5
+```
+
+Sequences live under `"sequences"` in the config. Targets can be any point name
+or an array element like `guardian_pos[0]`. For `key` use the letter (e.g. `g`,
+`L`); for `wait` use seconds; for `scroll` use notches (+up / −down).
+
 ## Run
 
 ```
-python firestone_bot.py --list                 # show profiles
-python firestone_bot.py --profile default      # run the main loop
-python firestone_bot.py --func guardian 2      # run one action once (for testing)
+python firestone_bot.py --list                 # show profiles AND sequences
+python firestone_bot.py --profile default      # run the built-in main loop
+python firestone_bot.py --sequence NAME --reps N   # run your custom sequence
+python firestone_bot.py --func guardian 2      # run one built-in action once
 ```
 
 A countdown gives you a few seconds to click into the game window first.

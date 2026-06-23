@@ -121,5 +121,15 @@
       "swap_alchemy": "0;0;0",
       "swap_fs_tree": "0;0;0"
     }
+  },
+  "sequences": {
+    "example_guardian": [
+      {"action": "key", "value": "g"},
+      {"action": "click", "target": "guardian_pos[0]"},
+      {"action": "click", "target": "guardian_confirm"},
+      {"action": "wait", "value": 0.25},
+      {"action": "click", "target": "reset_close", "clicks": 4},
+      {"action": "click", "target": "reset_home"}
+    ]
   }
 }

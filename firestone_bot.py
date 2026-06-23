@@ -22,6 +22,7 @@ of the screen to abort instantly.  Ctrl+C also stops the bot.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -228,6 +229,51 @@ class Firestone:
     def probe(self, point_name):
         """Click a single named point once — handy for testing a backend."""
         self.click_pt(point_name, after=self.t_short)
+
+    # ---- user-defined sequences (built in the setup GUI) ------------------ #
+    def _resolve_target(self, name):
+        """Resolve a step target to (rx, ry): a point name, or 'array[i]'."""
+        if name in self.points:
+            return self.points[name]
+        m = re.match(r"^(\w+)\[(\d+)\]$", str(name))
+        if m and m.group(1) in self.arrays:
+            return self.arrays[m.group(1)][int(m.group(2))]
+        raise KeyError(f"Unknown sequence target: {name!r}")
+
+    def run_step(self, step):
+        a = step["action"]
+        if a == "wait":
+            self.sleep(float(step.get("value", 0)))
+        elif a == "key":
+            self.key(str(step["value"]))
+        elif a == "scroll":
+            rx, ry = self._resolve_target(step["target"])
+            self.scroll(rx, ry, int(step.get("value", 0)))
+        elif a == "move":
+            rx, ry = self._resolve_target(step["target"])
+            self.move(rx, ry, after=self.t_short)
+        elif a in ("click", "double_click", "right_click"):
+            rx, ry = self._resolve_target(step["target"])
+            clicks = int(step.get("clicks", 2 if a == "double_click" else 1))
+            button = "right" if a == "right_click" else "left"
+            self.click(rx, ry, clicks=clicks,
+                       delay=float(step.get("delay", 0.0)),
+                       button=button, after=self.t_short)
+        else:
+            raise ValueError(f"Unknown action in sequence step: {a!r}")
+
+    def run_sequence(self, name, reps=1):
+        steps = self.cfg.get("sequences", {}).get(name)
+        if steps is None:
+            raise KeyError(f"No sequence named {name!r} in the config.")
+        start = time.time()
+        self.focus()
+        for r in range(1, reps + 1):
+            for step in steps:
+                self.run_step(step)
+            print(f"sequence {name!r} rep {r}/{reps} done — "
+                  f"elapsed {int(time.time() - start)}s")
+        return int(time.time() - start)
 
     # ---- helpers ---------------------------------------------------------- #
     def reset(self):
@@ -516,6 +562,9 @@ def main():
     ap.add_argument("--list", action="store_true", help="list available profiles")
     ap.add_argument("--func", nargs="+", metavar="ARG",
                     help="run a single action once, e.g. --func guardian 2")
+    ap.add_argument("--sequence", help="run a user-defined sequence from the config")
+    ap.add_argument("--reps", type=int, default=1,
+                    help="repeat count for --sequence (default 1)")
     ap.add_argument("--background", action="store_true",
                     help="inject input into the game window via Win32 PostMessage "
                          "instead of moving the real cursor (Windows; may not work "
@@ -533,6 +582,21 @@ def main():
         print("Profiles:")
         for name, p in cfg["profiles"].items():
             print(f"  {name}: reps={p['reps']} lvl={p['lvl']} swap={p['swap_server']}")
+        print("Sequences:")
+        for name, steps in cfg.get("sequences", {}).items():
+            print(f"  {name}: {len(steps)} steps")
+        return
+
+    if args.sequence:
+        print(f"Running sequence {args.sequence!r} x{args.reps} in {args.countdown}s — "
+              "switch to the game now.")
+        time.sleep(args.countdown)
+        try:
+            bot.run_sequence(args.sequence, reps=args.reps)
+        except pyautogui.FailSafeException:
+            print("\nAborted via fail-safe (mouse in corner).")
+        except KeyboardInterrupt:
+            print("\nStopped (Ctrl+C).")
         return
 
     if args.func:
