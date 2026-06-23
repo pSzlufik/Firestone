@@ -131,5 +131,7 @@
       {"action": "click", "target": "reset_close", "clicks": 4},
       {"action": "click", "target": "reset_home"}
     ]
+  },
+  "elements": {
   }
 }

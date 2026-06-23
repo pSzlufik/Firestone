@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 """
-Firestone setup GUI — two tabs:
+Firestone setup GUI.
 
-  POINTS    Calibrate every coordinate. Pick the game window, then for any point
-            click "Capture", hover the spot in-game and press F8 (global hotkey;
-            falls back to a countdown if the optional `keyboard` package is
-            missing). "Test" moves your mouse there; "Show" flashes a square
-            there without moving the mouse. Hover a name to read what it does.
+Tabs:
 
-  SEQUENCE  Build your own action cycle from drop-downs: choose an action
-            (click / move / key / scroll / wait ...) and a target point, add it
-            to the list, reorder, and save. Run it with:
-                python firestone_bot.py --sequence <name> --reps N
+  BUILDER   Build your own positions from scratch (starts empty):
+              * point  — one captured coordinate.
+              * area   — a rectangle you drag on screen; the bot sweeps it as a
+                grid of clicks (top-left -> bottom-right) stepping by an offset
+                you set, with optional "meantime" clicks performed after EACH
+                cell (e.g. accept-mission / close-window). Great for the map's
+                non-deterministic mission spots or war-machine runs.
 
-Only the standard library + pyautogui are required (tkinter ships with Python);
-`keyboard` is optional and only makes F8 capture instant.
+  POINTS    The ported DFSD coordinate set (for the built-in profile loop).
+
+  SEQUENCE  Compose an action cycle from drop-downs (now including 'element').
+
+Capture: arm with a Capture button, hover the spot in-game, press F8 (global, if
+the optional `keyboard` package is installed) or wait for the countdown.
+
+Run what you build:
+    python firestone_bot.py --element <name> --reps N
+    python firestone_bot.py --sequence <name> --reps N
 """
 
 import json
 import os
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
 import pyautogui
 
@@ -30,7 +37,7 @@ except Exception:
     gw = None
 
 try:
-    import keyboard  # optional: enables the global F8 capture hotkey
+    import keyboard
 except Exception:
     keyboard = None
 
@@ -41,62 +48,8 @@ CONFIG = os.path.join(HERE, "config.json")
 EXAMPLE = os.path.join(HERE, "config.example.json")
 CAPTURE_HOTKEY = "f8"
 
-ACTIONS = ["click", "double click", "right click", "move", "key", "scroll", "wait"]
+ACTIONS = ["click", "double click", "right click", "move", "key", "scroll", "wait", "element"]
 ACTION_KEY = {"double click": "double_click", "right click": "right_click"}
-
-DESCRIPTIONS = {
-    "reset_close": "Top-right close (X). The bot clicks it a few times to back out of any open panel.",
-    "reset_home": "Left-edge button that returns to the town / main screen.",
-    "guardian_confirm": "The Train/confirm button in the Guardian panel (after picking which guardian to train).",
-    "exped_open": "Opens the Expeditions panel (send heroes out; rewards feed the Tree of Life).",
-    "exped_select": "Selects the expedition to send.",
-    "exped_start": "Start / send the expedition (clicked twice).",
-    "lib_open_tree": "Opens the upgrade tree (Tree of Life) inside the Library (L key).",
-    "lib_top": "A section/tab near the top of the tree view.",
-    "lib_tab_right": "Bottom-right tab switching which part of the tree is shown.",
-    "lib_tab_left": "Bottom-left tab switching which part of the tree is shown.",
-    "lib_confirm_upgrade": "Confirm / buy the selected tree node upgrade.",
-    "lib_close": "Top-left close button for the tree pop-ups.",
-    "lib_corner": "A harmless corner click used to dismiss hover tooltips between actions.",
-    "lib_middle_x_probe": "Reference spot for the middle column of the tree (column 5).",
-    "tavern_open": "Opens the Tavern (recruit heroes / collect).",
-    "tavern_collect": "Collect / recruit button in the Tavern.",
-    "tavern_tab": "A tab inside the Tavern.",
-    "tavern_claim": "Claim the Tavern reward.",
-    "campaign_menu": "Opens the Campaign / world menu (M key context).",
-    "campaign_loot_collect": "Collects accumulated idle Campaign loot.",
-    "campaign_fight_select": "Selects the Campaign battle to fight.",
-    "campaign_fight_start": "Starts the Campaign fight.",
-    "campaign_fight_corner": "Back / close corner used after a fight.",
-    "campaign_fight_collect": "Collect the battle rewards.",
-    "campaign_fight_next": "Proceed to the next battle.",
-    "engi_open": "Opens the Engineer panel (war machines for campaign/daily missions).",
-    "engi_b": "Engineer step 2 — dispatch / select.",
-    "engi_c": "Engineer step 3.",
-    "engi_d": "Engineer step 4 — confirm / collect.",
-    "alch_db": "Alchemy experiment slot 1 ('DB'). Conducts that experiment.",
-    "alch_dust": "Alchemy experiment slot 2 ('dust').",
-    "alch_coins": "Alchemy experiment slot 3 ('coins').",
-    "oracle_solar": "Oracle — open/collect Solar chests (Oracle unlocks at level 200).",
-    "oracle_lunar": "Oracle — Lunar chests.",
-    "oracle_comet": "Oracle — Comet chests.",
-    "oracle_gifts2": "Oracle — second gift/chest button.",
-    "oracle_gifts": "Oracle — Oracle's gifts.",
-    "swap_menu": "Top-right menu button that starts a server/realm switch.",
-    "swap_servers_btn": "The 'Switch server' option in that menu.",
-    "swap_favorites": "The Favorites tab in the server list.",
-    "swap_list": "Focuses the favorites list.",
-    "swap_confirm": "Confirms the server switch.",
-    "map_collect_mission": "A finished World-Map mission marker to collect.",
-    "map_collect_claim": "Claim the map-mission reward.",
-    "map_collect_close": "Close the mission pop-up.",
-    "map_start_confirm": "Confirm starting a new map mission.",
-    "map_start_corner": "Neutral corner click between map placements.",
-}
-ARRAY_DESCRIPTIONS = {
-    "guardian_pos": "Position of guardian #{n} in the Guardian selection row.",
-    "swap_favorites_pos": "Position of favourite server #{n} in the server-swap grid.",
-}
 ARRAY_POINTS = ("guardian_pos", "swap_favorites_pos")
 
 
@@ -106,31 +59,55 @@ def load_config():
         return json.load(f)
 
 
+def area_cells(el):
+    """Replicate the bot's grid: top-left -> bottom-right by offset (ref px)."""
+    x1, y1 = el["topleft"]
+    x2, y2 = el["bottomright"]
+    dx, dy = el.get("offset", [100, 100])
+    x1, x2 = sorted((x1, x2))
+    y1, y2 = sorted((y1, y2))
+    dx, dy = max(1, abs(int(dx))), max(1, abs(int(dy)))
+    cells = []
+    y = y1
+    while y <= y2:
+        x = x1
+        while x <= x2:
+            cells.append((x, y))
+            x += dx
+        y += dy
+    return cells
+
+
 class SetupApp:
     def __init__(self, root):
         self.root = root
         self.cfg = load_config()
+        self.cfg.setdefault("elements", {})
         self.cfg.setdefault("sequences", {})
         self.gamewin = None
         self.markers = []
-        self._armed = None
+        self._armed = False
+        self._capture_cb = None
         self._capture_timer = None
         self.value_labels = {}
 
         root.title("Firestone — setup")
-        root.geometry("860x780")
+        root.geometry("900x800")
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_header()
-        nb = ttk.Notebook(self.root)
+        nb = ttk.Notebook(root)
         nb.pack(fill="both", expand=True, padx=10, pady=(4, 0))
+        self.builder_tab = ttk.Frame(nb)
         self.points_tab = ttk.Frame(nb)
         self.seq_tab = ttk.Frame(nb)
+        nb.add(self.builder_tab, text="Builder")
         nb.add(self.points_tab, text="Points")
         nb.add(self.seq_tab, text="Sequence")
+        self._build_footer()                 # status bar first (capture uses it)
+        self._build_builder(self.builder_tab)
         self._build_point_list(self.points_tab)
         self._build_sequence_editor(self.seq_tab)
-        self._build_footer()
 
         if keyboard is not None:
             try:
@@ -139,7 +116,9 @@ class SetupApp:
                 pass
         self.refresh_windows()
 
-    # ---- window picker ---------------------------------------------------- #
+    # ===================================================================== #
+    #  Window picker
+    # ===================================================================== #
     def _build_header(self):
         top = ttk.Frame(self.root, padding=10)
         top.pack(fill="x")
@@ -150,18 +129,11 @@ class SetupApp:
         ttk.Button(top, text="Refresh", command=self.refresh_windows).grid(row=0, column=2)
         self.win_status = ttk.Label(top, text="not selected", foreground="#a33")
         self.win_status.grid(row=0, column=3, padx=8)
-
         ttk.Label(top, text="Filter:").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.filter_var = tk.StringVar(value=self.cfg.get("window_title", "Firestone"))
         f = ttk.Entry(top, textvariable=self.filter_var, width=20)
         f.grid(row=1, column=1, sticky="w", padx=6, pady=(6, 0))
         f.bind("<KeyRelease>", lambda e: self.refresh_windows())
-
-        cap = "F8 (global)" if keyboard is not None else "the 3s countdown (install `keyboard` for instant F8)"
-        ttk.Label(top, wraplength=820, justify="left", foreground="#555",
-                  text=("Pick the GAME window (size should look ~16:9, not a near-square folder "
-                        f"window). To calibrate: click Capture, hover the spot in-game, trigger with {cap}.")
-                  ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
         self._win_objs = []
 
     def refresh_windows(self):
@@ -185,10 +157,9 @@ class SetupApp:
             self.gamewin = None
             self.win_status.config(text="no matching window", foreground="#a33")
             return
-        # Auto-pick the best candidate: prefer ~16:9, then largest area.
         def score(w):
-            ratio = w.width / w.height if w.height else 0
-            return (1 if 1.6 <= ratio <= 1.9 else 0, w.width * w.height)
+            r = w.width / w.height if w.height else 0
+            return (1 if 1.6 <= r <= 1.9 else 0, w.width * w.height)
         best = max(range(len(objs)), key=lambda i: score(objs[i]))
         self.win_combo.current(best)
         self.on_pick_window()
@@ -200,102 +171,40 @@ class SetupApp:
         w = self._win_objs[idx]
         self.cfg["window_title"] = w.title
         self.gamewin = GameWindow(w.title, self.cfg["reference_size"], window=w)
-        ratio = w.width / w.height if w.height else 0
-        warn = "" if 1.6 <= ratio <= 1.9 else "  (warning: not ~16:9 — is this the game?)"
+        r = w.width / w.height if w.height else 0
+        warn = "" if 1.6 <= r <= 1.9 else "  (warning: not ~16:9 — is this the game?)"
         self.win_status.config(text=f"{w.width}x{w.height}{warn}",
                               foreground="#161" if not warn else "#b25a00")
 
-    # ---- POINTS tab ------------------------------------------------------- #
-    def _build_point_list(self, parent):
-        canvas = tk.Canvas(parent, highlightthickness=0)
-        scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        self.inner = ttk.Frame(canvas)
-        self.inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=self.inner, anchor="nw")
-        canvas.configure(yscrollcommand=scroll.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
-
-        row = 0
-        groups = {}
-        for name in self.cfg["points"]:
-            groups.setdefault(name.split("_")[0], []).append(name)
-        for group, names in groups.items():
-            ttk.Label(self.inner, text=group.upper(), font=("", 9, "bold"),
-                      foreground="#7a1f2b").grid(row=row, column=0, sticky="w", pady=(10, 2))
-            row += 1
-            for name in names:
-                self._point_row(name, row)
-                row += 1
-        for arr in ARRAY_POINTS:
-            ttk.Label(self.inner, text=arr.upper(), font=("", 9, "bold"),
-                      foreground="#7a1f2b").grid(row=row, column=0, sticky="w", pady=(10, 2))
-            row += 1
-            for i in range(len(self.cfg["arrays"][arr])):
-                self._array_row(arr, i, row)
-                row += 1
-
-    def _hover(self, text):
-        return lambda _e: self.status.config(text=text)
-
-    def _point_row(self, name, row):
-        lbl = ttk.Label(self.inner, text=name, width=24)
-        lbl.grid(row=row, column=0, sticky="w")
-        lbl.bind("<Enter>", self._hover(DESCRIPTIONS.get(name, "(no description)")))
-        val = ttk.Label(self.inner, text=str(self.cfg["points"][name]), width=12)
-        val.grid(row=row, column=1, padx=6)
-        self.value_labels[("point", name)] = val
-        ttk.Button(self.inner, text="Capture", width=8,
-                   command=lambda: self._arm(("point", name))).grid(row=row, column=2)
-        ttk.Button(self.inner, text="Test", width=6,
-                   command=lambda: self.test_point(self.cfg["points"][name])).grid(row=row, column=3)
-        ttk.Button(self.inner, text="Show", width=6,
-                   command=lambda: self.show_marker(self.cfg["points"][name], name)).grid(row=row, column=4)
-
-    def _array_row(self, arr, i, row):
-        label = f"{arr}[{i}]"
-        lbl = ttk.Label(self.inner, text=label, width=24)
-        lbl.grid(row=row, column=0, sticky="w")
-        lbl.bind("<Enter>", self._hover(ARRAY_DESCRIPTIONS.get(arr, "").format(n=i + 1)))
-        val = ttk.Label(self.inner, text=str(self.cfg["arrays"][arr][i]), width=12)
-        val.grid(row=row, column=1, padx=6)
-        self.value_labels[("array", arr, i)] = val
-        ttk.Button(self.inner, text="Capture", width=8,
-                   command=lambda: self._arm(("array", arr, i))).grid(row=row, column=2)
-        ttk.Button(self.inner, text="Test", width=6,
-                   command=lambda: self.test_point(self.cfg["arrays"][arr][i])).grid(row=row, column=3)
-        ttk.Button(self.inner, text="Show", width=6,
-                   command=lambda: self.show_marker(self.cfg["arrays"][arr][i], label)).grid(row=row, column=4)
-
-    # ---- capture (non-modal, global F8 + countdown fallback) -------------- #
-    def _arm(self, target):
+    # ===================================================================== #
+    #  Capture infrastructure (callback based)
+    # ===================================================================== #
+    def _arm(self, callback, label):
+        """Arm a single-point capture; `callback(ref_xy)` gets the result."""
         if self.gamewin is None:
             messagebox.showwarning("No window", "Pick the game window first.")
             return
-        self._armed = target
-        name = target[1] if target[0] == "point" else f"{target[1]}[{target[2]}]"
-        # F8 (if available) fires instantly; a countdown always runs as a
-        # backstop so capture still works even if the global hook is dead.
-        self._countdown(6.0 if keyboard is not None else 3.0, name)
+        self._capture_cb = callback
+        self._armed = True
+        self._countdown(6.0 if keyboard is not None else 3.0, label)
 
-    def _countdown(self, remaining, name):
-        if self._armed is None:
+    def _countdown(self, remaining, label):
+        if not self._armed:
             return
         if remaining <= 0:
             self._do_capture()
             return
+        tip = "press F8 or " if keyboard is not None else ""
         self.status.config(
-            text=f"Capturing '{name}' in {remaining:0.1f}s — hover the spot in-game…",
+            text=f"Capturing '{label}' — hover the spot in-game ({tip}{remaining:0.1f}s)…",
             foreground="#7a1f2b")
-        self._capture_timer = self.root.after(100, lambda: self._countdown(remaining - 0.1, name))
+        self._capture_timer = self.root.after(100, lambda: self._countdown(remaining - 0.1, label))
 
     def _on_hotkey(self):
-        # Runs in keyboard's thread; marshal to the Tk thread.
         self.root.after(0, self._do_capture)
 
     def _do_capture(self):
-        if self._armed is None or self.gamewin is None:
+        if not self._armed or self.gamewin is None:
             return
         if self._capture_timer is not None:
             try:
@@ -305,19 +214,277 @@ class SetupApp:
             self._capture_timer = None
         sx, sy = pyautogui.position()
         ref = list(self.gamewin.to_reference(sx, sy))
-        target = self._armed
-        self._armed = None
-        if target[0] == "point":
-            self.cfg["points"][target[1]] = ref
-            self.value_labels[("point", target[1])].config(text=str(ref))
-            name = target[1]
-        else:
-            self.cfg["arrays"][target[1]][target[2]] = ref
-            self.value_labels[("array", target[1], target[2])].config(text=str(ref))
-            name = f"{target[1]}[{target[2]}]"
-        self.show_marker(ref, name)
-        self.status.config(text=f"Captured '{name}' -> {ref}  (remember to Save).",
-                           foreground="#161")
+        self._armed = False
+        cb, self._capture_cb = self._capture_cb, None
+        if cb:
+            cb(ref)
+        self.show_marker(ref)
+        self.status.config(text=f"Captured {ref}  (remember to Save).", foreground="#161")
+
+    def capture_area_rect(self, callback):
+        """Translucent full-screen overlay; user drags a rectangle.
+        `callback(topleft_ref, bottomright_ref)` gets the corners."""
+        if self.gamewin is None:
+            messagebox.showwarning("No window", "Pick the game window first.")
+            return
+        ov = tk.Toplevel(self.root)
+        ov.attributes("-fullscreen", True)
+        ov.attributes("-topmost", True)
+        try:
+            ov.attributes("-alpha", 0.30)
+        except Exception:
+            pass
+        cv = tk.Canvas(ov, cursor="cross", bg="black", highlightthickness=0)
+        cv.pack(fill="both", expand=True)
+        cv.create_text(cv.winfo_screenwidth() // 2, 30, fill="white", font=("", 14),
+                       text="Drag a rectangle over the area to sweep — Esc to cancel")
+        st = {"sx": None, "sy": None, "cx": None, "cy": None, "rect": None}
+
+        def down(e):
+            st["sx"], st["sy"], st["cx"], st["cy"] = e.x_root, e.y_root, e.x, e.y
+            st["rect"] = cv.create_rectangle(e.x, e.y, e.x, e.y, outline="#ff3030", width=2)
+
+        def drag(e):
+            if st["rect"] is not None:
+                cv.coords(st["rect"], st["cx"], st["cy"], e.x, e.y)
+
+        def up(e):
+            if st["sx"] is None:
+                ov.destroy()
+                return
+            tl = self.gamewin.to_reference(min(st["sx"], e.x_root), min(st["sy"], e.y_root))
+            br = self.gamewin.to_reference(max(st["sx"], e.x_root), max(st["sy"], e.y_root))
+            ov.destroy()
+            callback(list(tl), list(br))
+
+        cv.bind("<ButtonPress-1>", down)
+        cv.bind("<B1-Motion>", drag)
+        cv.bind("<ButtonRelease-1>", up)
+        ov.bind("<Escape>", lambda e: ov.destroy())
+
+    # ===================================================================== #
+    #  BUILDER tab
+    # ===================================================================== #
+    def _build_builder(self, parent):
+        left = ttk.Frame(parent, padding=8)
+        left.pack(side="left", fill="y")
+        ttk.Label(left, text="Your elements", font=("", 9, "bold")).pack(anchor="w")
+        self.elem_list = tk.Listbox(left, width=26, height=22)
+        self.elem_list.pack(fill="y", expand=True, pady=4)
+        self.elem_list.bind("<<ListboxSelect>>", lambda e: self._show_element_details())
+        row = ttk.Frame(left)
+        row.pack(fill="x")
+        ttk.Button(row, text="Add point", command=self.add_point_element).pack(side="left")
+        ttk.Button(row, text="Add area", command=self.add_area_element).pack(side="left", padx=4)
+        ttk.Button(left, text="Delete element", command=self.delete_element).pack(fill="x", pady=2)
+
+        self.detail = ttk.LabelFrame(parent, text="Element details", padding=10)
+        self.detail.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+        self._reload_elements()
+
+    def _reload_elements(self):
+        self.elem_list.delete(0, "end")
+        for name, el in self.cfg["elements"].items():
+            tag = el["type"]
+            if tag == "area":
+                tag = f"area {len(area_cells(el))} cells"
+            self.elem_list.insert("end", f"{name}  ({tag})")
+
+    def _selected_element_name(self):
+        sel = self.elem_list.curselection()
+        if not sel:
+            return None
+        return self.elem_list.get(sel[0]).split("  (")[0]
+
+    def add_point_element(self):
+        name = simpledialog.askstring("New point", "Name for this point element:", parent=self.root)
+        if not name:
+            return
+        self.cfg["elements"][name] = {"type": "point", "pos": [0, 0]}
+        self._reload_elements()
+
+        def done(ref):
+            self.cfg["elements"][name]["pos"] = ref
+            self._reload_elements()
+            self._select_element(name)
+        self._arm(done, name)
+
+    def add_area_element(self):
+        name = simpledialog.askstring("New area", "Name for this area element:", parent=self.root)
+        if not name:
+            return
+
+        def got_rect(tl, br):
+            self.cfg["elements"][name] = {
+                "type": "area", "topleft": tl, "bottomright": br,
+                "offset": [100, 100], "meantime": [],
+            }
+            self._reload_elements()
+            self._select_element(name)
+            self.status.config(text=f"Area '{name}' set. Adjust offset and add meantime clicks.",
+                               foreground="#161")
+        self.status.config(text="Drag a rectangle over the area in-game…", foreground="#7a1f2b")
+        self.capture_area_rect(got_rect)
+
+    def delete_element(self):
+        name = self._selected_element_name()
+        if not name:
+            return
+        if messagebox.askyesno("Delete", f"Delete element '{name}'?"):
+            self.cfg["elements"].pop(name, None)
+            self._reload_elements()
+            for w in self.detail.winfo_children():
+                w.destroy()
+
+    def _select_element(self, name):
+        names = list(self.cfg["elements"])
+        if name in names:
+            self.elem_list.selection_clear(0, "end")
+            self.elem_list.selection_set(names.index(name))
+            self._show_element_details()
+
+    def _show_element_details(self):
+        for w in self.detail.winfo_children():
+            w.destroy()
+        name = self._selected_element_name()
+        if not name:
+            return
+        el = self.cfg["elements"][name]
+        ttk.Label(self.detail, text=name, font=("", 11, "bold")).pack(anchor="w")
+
+        if el["type"] == "point":
+            ttk.Label(self.detail, text=f"position: {el['pos']}").pack(anchor="w", pady=4)
+            bar = ttk.Frame(self.detail); bar.pack(anchor="w")
+            ttk.Button(bar, text="Recapture", command=lambda: self._arm(
+                lambda ref: (el.__setitem__("pos", ref), self._show_element_details()), name)
+                ).pack(side="left")
+            ttk.Button(bar, text="Test", command=lambda: self.test_point(el["pos"])).pack(side="left", padx=4)
+            ttk.Button(bar, text="Show", command=lambda: self.show_marker(el["pos"], name)).pack(side="left")
+            return
+
+        # area
+        ttk.Label(self.detail, text=f"top-left: {el['topleft']}    bottom-right: {el['bottomright']}"
+                  ).pack(anchor="w", pady=2)
+        ttk.Button(self.detail, text="Recapture rectangle",
+                   command=lambda: self.capture_area_rect(
+                       lambda tl, br: (el.update(topleft=tl, bottomright=br),
+                                       self._reload_elements(), self._show_element_details()))
+                   ).pack(anchor="w", pady=2)
+
+        offr = ttk.Frame(self.detail); offr.pack(anchor="w", pady=6)
+        ttk.Label(offr, text="Offset  dx:").pack(side="left")
+        dxv = tk.StringVar(value=str(el["offset"][0]))
+        ttk.Entry(offr, textvariable=dxv, width=6).pack(side="left", padx=2)
+        ttk.Label(offr, text="dy:").pack(side="left")
+        dyv = tk.StringVar(value=str(el["offset"][1]))
+        ttk.Entry(offr, textvariable=dyv, width=6).pack(side="left", padx=2)
+
+        grid_lbl = ttk.Label(self.detail, text="")
+        def apply_offset():
+            try:
+                el["offset"] = [int(dxv.get()), int(dyv.get())]
+            except ValueError:
+                messagebox.showwarning("Bad offset", "Offsets must be whole numbers.")
+                return
+            self._reload_elements()
+            grid_lbl.config(text=f"grid: {len(area_cells(el))} clicks")
+        ttk.Button(offr, text="Apply", command=apply_offset).pack(side="left", padx=6)
+        grid_lbl.config(text=f"grid: {len(area_cells(el))} clicks")
+        grid_lbl.pack(anchor="w")
+
+        ttk.Label(self.detail, text="Meantime clicks (after each cell):",
+                  font=("", 9, "bold")).pack(anchor="w", pady=(10, 2))
+        mlist = tk.Listbox(self.detail, height=6)
+        for mp in el["meantime"]:
+            mlist.insert("end", str(mp))
+        mlist.pack(fill="x")
+        mbar = ttk.Frame(self.detail); mbar.pack(anchor="w", pady=4)
+
+        def add_meantime():
+            el["meantime"].append([0, 0])
+            idx = len(el["meantime"]) - 1
+
+            def done(ref):
+                el["meantime"][idx] = ref
+                self._show_element_details()
+            self._arm(done, f"{name} meantime[{idx}]")
+        def del_meantime():
+            s = mlist.curselection()
+            if s:
+                el["meantime"].pop(s[0])
+                self._show_element_details()
+        ttk.Button(mbar, text="Add meantime", command=add_meantime).pack(side="left")
+        ttk.Button(mbar, text="Remove", command=del_meantime).pack(side="left", padx=4)
+        ttk.Button(mbar, text="Show grid", command=lambda: self.show_area(el)).pack(side="left", padx=4)
+
+    def show_area(self, el):
+        if self.gamewin is None:
+            messagebox.showwarning("No window", "Pick the game window first.")
+            return
+        self._clear_markers()
+        for (x, y) in area_cells(el):
+            sx, sy = self.gamewin.to_screen(x, y)
+            self._make_marker(sx, sy, None, "#1f6feb", size=8)
+        for mp in el["meantime"]:
+            sx, sy = self.gamewin.to_screen(mp[0], mp[1])
+            self._make_marker(sx, sy, None, "#e08a1f", size=12)
+        self.root.after(4000, self._clear_markers)
+        self.status.config(text="Blue = grid clicks, orange = meantime clicks.")
+
+    # ===================================================================== #
+    #  POINTS tab (ported DFSD set)
+    # ===================================================================== #
+    def _build_point_list(self, parent):
+        canvas = tk.Canvas(parent, highlightthickness=0)
+        scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        row = 0
+        for name in self.cfg.get("points", {}):
+            self._point_row(inner, name, row)
+            row += 1
+        for arr in ARRAY_POINTS:
+            for i in range(len(self.cfg.get("arrays", {}).get(arr, []))):
+                self._array_row(inner, arr, i, row)
+                row += 1
+
+    def _point_row(self, parent, name, row):
+        ttk.Label(parent, text=name, width=24).grid(row=row, column=0, sticky="w")
+        val = ttk.Label(parent, text=str(self.cfg["points"][name]), width=12)
+        val.grid(row=row, column=1, padx=6)
+        self.value_labels[("point", name)] = val
+        ttk.Button(parent, text="Capture", width=8, command=lambda: self._arm(
+            lambda ref: self._set_point(name, ref), name)).grid(row=row, column=2)
+        ttk.Button(parent, text="Test", width=6,
+                   command=lambda: self.test_point(self.cfg["points"][name])).grid(row=row, column=3)
+        ttk.Button(parent, text="Show", width=6,
+                   command=lambda: self.show_marker(self.cfg["points"][name], name)).grid(row=row, column=4)
+
+    def _array_row(self, parent, arr, i, row):
+        ttk.Label(parent, text=f"{arr}[{i}]", width=24).grid(row=row, column=0, sticky="w")
+        val = ttk.Label(parent, text=str(self.cfg["arrays"][arr][i]), width=12)
+        val.grid(row=row, column=1, padx=6)
+        self.value_labels[("array", arr, i)] = val
+        ttk.Button(parent, text="Capture", width=8, command=lambda: self._arm(
+            lambda ref: self._set_array(arr, i, ref), f"{arr}[{i}]")).grid(row=row, column=2)
+        ttk.Button(parent, text="Test", width=6,
+                   command=lambda: self.test_point(self.cfg["arrays"][arr][i])).grid(row=row, column=3)
+        ttk.Button(parent, text="Show", width=6,
+                   command=lambda: self.show_marker(self.cfg["arrays"][arr][i], f"{arr}[{i}]")
+                   ).grid(row=row, column=4)
+
+    def _set_point(self, name, ref):
+        self.cfg["points"][name] = ref
+        self.value_labels[("point", name)].config(text=str(ref))
+
+    def _set_array(self, arr, i, ref):
+        self.cfg["arrays"][arr][i] = ref
+        self.value_labels[("array", arr, i)].config(text=str(ref))
 
     def test_point(self, ref_xy):
         if self.gamewin is None:
@@ -326,7 +493,9 @@ class SetupApp:
         x, y = self.gamewin.to_screen(ref_xy[0], ref_xy[1])
         pyautogui.moveTo(x, y, duration=0.3)
 
-    # ---- markers ---------------------------------------------------------- #
+    # ===================================================================== #
+    #  Markers
+    # ===================================================================== #
     def _make_marker(self, sx, sy, text, color, size=16):
         m = tk.Toplevel(self.root)
         m.overrideredirect(True)
@@ -349,26 +518,10 @@ class SetupApp:
 
     def show_marker(self, ref_xy, text=None):
         if self.gamewin is None:
-            messagebox.showwarning("No window", "Pick the game window first.")
             return
         x, y = self.gamewin.to_screen(ref_xy[0], ref_xy[1])
         self._make_marker(x, y, text, "#e02020")
         self.root.after(2500, self._clear_markers)
-
-    def show_all(self):
-        if self.gamewin is None:
-            messagebox.showwarning("No window", "Pick the game window first.")
-            return
-        self._clear_markers()
-        for xy in self.cfg["points"].values():
-            x, y = self.gamewin.to_screen(xy[0], xy[1])
-            self._make_marker(x, y, None, "#1f6feb", size=10)
-        for arr in ARRAY_POINTS:
-            for xy in self.cfg["arrays"][arr]:
-                x, y = self.gamewin.to_screen(xy[0], xy[1])
-                self._make_marker(x, y, None, "#1f9d55", size=10)
-        self.status.config(text="Showing all points (blue=single, green=array). "
-                                "Click 'Hide markers' to clear.")
 
     def _clear_markers(self):
         for m in self.markers:
@@ -378,16 +531,17 @@ class SetupApp:
                 pass
         self.markers = []
 
-    # ---- SEQUENCE tab ----------------------------------------------------- #
-    def _target_options(self):
-        opts = list(self.cfg["points"])
+    # ===================================================================== #
+    #  SEQUENCE tab
+    # ===================================================================== #
+    def _point_targets(self):
+        opts = list(self.cfg.get("points", {}))
         for arr in ARRAY_POINTS:
-            opts += [f"{arr}[{i}]" for i in range(len(self.cfg["arrays"][arr]))]
+            opts += [f"{arr}[{i}]" for i in range(len(self.cfg.get("arrays", {}).get(arr, [])))]
         return opts
 
     def _build_sequence_editor(self, parent):
         self.sequence = []
-
         bar = ttk.Frame(parent, padding=8)
         bar.pack(fill="x")
         ttk.Label(bar, text="Sequence:").grid(row=0, column=0, sticky="w")
@@ -405,10 +559,10 @@ class SetupApp:
         self.act_var.current(0)
         self.act_var.grid(row=0, column=1, padx=4)
         self.act_var.bind("<<ComboboxSelected>>", lambda e: self._sync_step_fields())
-        ttk.Label(add, text="Point").grid(row=0, column=2, padx=4)
-        self.tgt_var = ttk.Combobox(add, width=24, state="readonly", values=self._target_options())
+        ttk.Label(add, text="Target").grid(row=0, column=2, padx=4)
+        self.tgt_var = ttk.Combobox(add, width=24, state="readonly", values=self._point_targets())
         self.tgt_var.grid(row=0, column=3, padx=4)
-        ttk.Label(add, text="Value / clicks").grid(row=0, column=4, padx=4)
+        ttk.Label(add, text="Value/clicks").grid(row=0, column=4, padx=4)
         self.val_var = ttk.Entry(add, width=8)
         self.val_var.grid(row=0, column=5, padx=4)
         ttk.Button(add, text="Add step", command=self.add_step).grid(row=0, column=6, padx=8)
@@ -428,27 +582,29 @@ class SetupApp:
         for txt, cmd in (("Up", self.step_up), ("Down", self.step_down),
                          ("Delete", self.step_del), ("Clear", self.step_clear)):
             ttk.Button(side, text=txt, width=8, command=cmd).pack(pady=2)
-
         if self.cfg["sequences"]:
             self.load_sequence()
 
     def _sync_step_fields(self):
         a = self.act_var.get()
-        if a == "key":
+        if a == "element":
+            self.tgt_var.config(state="readonly", values=list(self.cfg["elements"]))
+            self.step_hint.config(text="element: run one of your Builder elements (point/area).")
+        elif a == "key":
             self.tgt_var.config(state="disabled")
             self.step_hint.config(text="key: put the key in Value (e.g. g, m, L, o, a).")
         elif a == "wait":
             self.tgt_var.config(state="disabled")
             self.step_hint.config(text="wait: put seconds in Value (e.g. 0.5).")
         elif a == "scroll":
-            self.tgt_var.config(state="readonly")
-            self.step_hint.config(text="scroll: Point = where; Value = notches (+up / -down).")
+            self.tgt_var.config(state="readonly", values=self._point_targets())
+            self.step_hint.config(text="scroll: Target = where; Value = notches (+up / -down).")
         elif a in ("click", "double click", "right click"):
-            self.tgt_var.config(state="readonly")
-            self.step_hint.config(text="click: Point = where; Value = number of clicks (optional).")
-        else:  # move
-            self.tgt_var.config(state="readonly")
-            self.step_hint.config(text="move: Point = where to move the cursor.")
+            self.tgt_var.config(state="readonly", values=self._point_targets())
+            self.step_hint.config(text="click: Target = point; Value = number of clicks (optional).")
+        else:
+            self.tgt_var.config(state="readonly", values=self._point_targets())
+            self.step_hint.config(text="move: Target = point to move to.")
 
     def add_step(self):
         a = self.act_var.get()
@@ -463,12 +619,12 @@ class SetupApp:
         else:
             tgt = self.tgt_var.get()
             if not tgt:
-                messagebox.showwarning("Missing point", f"'{a}' needs a Point.")
+                messagebox.showwarning("Missing target", f"'{a}' needs a target.")
                 return
             step["target"] = tgt
             if act == "scroll":
                 step["value"] = int(val or 0)
-            elif val:
+            elif act in ("click", "double_click", "right_click") and val:
                 step["clicks"] = int(val)
         self.sequence.append(step)
         self.seq_list.insert("end", self._fmt_step(step))
@@ -482,7 +638,9 @@ class SetupApp:
             return f"key  {s['value']}"
         if a == "scroll":
             return f"scroll  {s['target']}  {s.get('value', 0)}"
-        extra = f"  x{s['clicks']}" if s.get("clicks", 1) and s.get("clicks", 1) != 1 else ""
+        if a == "element":
+            return f"element  {s['target']}"
+        extra = f"  x{s['clicks']}" if s.get("clicks", 1) != 1 else ""
         return f"{a}  {s.get('target', '')}{extra}"
 
     def _reload_listbox(self):
@@ -498,25 +656,21 @@ class SetupApp:
         i = self._sel()
         if i and i > 0:
             self.sequence[i - 1], self.sequence[i] = self.sequence[i], self.sequence[i - 1]
-            self._reload_listbox()
-            self.seq_list.selection_set(i - 1)
+            self._reload_listbox(); self.seq_list.selection_set(i - 1)
 
     def step_down(self):
         i = self._sel()
         if i is not None and i < len(self.sequence) - 1:
             self.sequence[i + 1], self.sequence[i] = self.sequence[i], self.sequence[i + 1]
-            self._reload_listbox()
-            self.seq_list.selection_set(i + 1)
+            self._reload_listbox(); self.seq_list.selection_set(i + 1)
 
     def step_del(self):
         i = self._sel()
         if i is not None:
-            del self.sequence[i]
-            self._reload_listbox()
+            del self.sequence[i]; self._reload_listbox()
 
     def step_clear(self):
-        self.sequence = []
-        self._reload_listbox()
+        self.sequence = []; self._reload_listbox()
 
     def load_sequence(self):
         name = self.seq_name.get().strip()
@@ -532,10 +686,11 @@ class SetupApp:
         self.cfg["sequences"][name] = self.sequence
         self.seq_name["values"] = list(self.cfg["sequences"])
         self._write_config()
-        self.status.config(text=f"Saved sequence '{name}' ({len(self.sequence)} steps) to config.json.",
-                           foreground="#161")
+        self.status.config(text=f"Saved sequence '{name}' to config.json.", foreground="#161")
 
-    # ---- footer / save ---------------------------------------------------- #
+    # ===================================================================== #
+    #  Footer / save
+    # ===================================================================== #
     def _build_footer(self):
         self.status = ttk.Label(self.root, text="Ready.", relief="sunken",
                                 anchor="w", padding=4, foreground="#333")
@@ -545,8 +700,7 @@ class SetupApp:
         ttk.Button(bar, text="Save config.json", command=self.save).pack(side="right")
         self.saved = ttk.Label(bar, text="")
         self.saved.pack(side="right", padx=10)
-        ttk.Button(bar, text="Show all points", command=self.show_all).pack(side="left")
-        ttk.Button(bar, text="Hide markers", command=self._clear_markers).pack(side="left", padx=6)
+        ttk.Button(bar, text="Hide markers", command=self._clear_markers).pack(side="left")
 
     def _write_config(self):
         with open(CONFIG, "w", encoding="utf-8") as f:
@@ -554,8 +708,7 @@ class SetupApp:
 
     def save(self):
         self._write_config()
-        self.saved.config(text=f"saved (window: {self.cfg.get('window_title', '')[:20]!r})",
-                          foreground="#161")
+        self.saved.config(text="saved config.json", foreground="#161")
 
     def _on_close(self):
         if keyboard is not None:

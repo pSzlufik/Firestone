@@ -230,6 +230,49 @@ class Firestone:
         """Click a single named point once — handy for testing a backend."""
         self.click_pt(point_name, after=self.t_short)
 
+    # ---- user-defined elements (point / area) ----------------------------- #
+    def _area_cells(self, el):
+        """Grid of click positions across an area, top-left to bottom-right,
+        stepping by the element's offset."""
+        x1, y1 = el["topleft"]
+        x2, y2 = el["bottomright"]
+        dx, dy = el.get("offset", [100, 100])
+        x1, x2 = sorted((x1, x2))
+        y1, y2 = sorted((y1, y2))
+        dx = max(1, abs(int(dx)))
+        dy = max(1, abs(int(dy)))
+        cells = []
+        y = y1
+        while y <= y2:
+            x = x1
+            while x <= x2:
+                cells.append((x, y))
+                x += dx
+            y += dy
+        return cells
+
+    def run_element(self, name):
+        """Run a user-defined element: a single 'point' click, or an 'area'
+        swept as a grid of clicks with optional 'meantime' clicks after each
+        cell (e.g. accept-mission / close-window)."""
+        el = self.cfg.get("elements", {}).get(name)
+        if el is None:
+            raise KeyError(f"No element named {name!r} in the config.")
+        self.focus()
+        if el["type"] == "point":
+            x, y = el["pos"]
+            self.click(x, y, after=self.t_short)
+            return
+        if el["type"] == "area":
+            meantime = el.get("meantime", [])
+            cells = self._area_cells(el)
+            for (x, y) in cells:
+                self.click(x, y, after=self.t_short)
+                for (mx, my) in meantime:
+                    self.click(mx, my, after=self.t_short)
+            return
+        raise ValueError(f"Unknown element type: {el.get('type')!r}")
+
     # ---- user-defined sequences (built in the setup GUI) ------------------ #
     def _resolve_target(self, name):
         """Resolve a step target to (rx, ry): a point name, or 'array[i]'."""
@@ -244,6 +287,8 @@ class Firestone:
         a = step["action"]
         if a == "wait":
             self.sleep(float(step.get("value", 0)))
+        elif a == "element":
+            self.run_element(step["target"])
         elif a == "key":
             self.key(str(step["value"]))
         elif a == "scroll":
@@ -563,8 +608,9 @@ def main():
     ap.add_argument("--func", nargs="+", metavar="ARG",
                     help="run a single action once, e.g. --func guardian 2")
     ap.add_argument("--sequence", help="run a user-defined sequence from the config")
+    ap.add_argument("--element", help="run a single user-defined element (point/area)")
     ap.add_argument("--reps", type=int, default=1,
-                    help="repeat count for --sequence (default 1)")
+                    help="repeat count for --sequence / --element (default 1)")
     ap.add_argument("--background", action="store_true",
                     help="inject input into the game window via Win32 PostMessage "
                          "instead of moving the real cursor (Windows; may not work "
@@ -585,6 +631,24 @@ def main():
         print("Sequences:")
         for name, steps in cfg.get("sequences", {}).items():
             print(f"  {name}: {len(steps)} steps")
+        print("Elements:")
+        for name, el in cfg.get("elements", {}).items():
+            kind = el.get("type")
+            extra = f" ({len(el.get('meantime', []))} meantime)" if kind == "area" else ""
+            print(f"  {name}: {kind}{extra}")
+        return
+
+    if args.element:
+        print(f"Running element {args.element!r} x{args.reps} in {args.countdown}s — "
+              "switch to the game now.")
+        time.sleep(args.countdown)
+        try:
+            for _ in range(args.reps):
+                bot.run_element(args.element)
+        except pyautogui.FailSafeException:
+            print("\nAborted via fail-safe (mouse in corner).")
+        except KeyboardInterrupt:
+            print("\nStopped (Ctrl+C).")
         return
 
     if args.sequence:

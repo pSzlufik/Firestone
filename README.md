@@ -62,6 +62,31 @@ per-machine), so run `build_exe.ps1` on each PC.
    You don't have to capture every point in one go — the defaults are a sane
    1920×1080 starting set. Fix the ones that are off for your layout.
 
+## Build your own positions (Builder tab)
+
+The **Builder** tab in `setup_gui.py` starts empty and lets you define your own
+elements:
+
+- **point** — one captured coordinate. Click "Add point", name it, hover the
+  spot in-game, press F8 (or wait for the countdown).
+- **area** — click "Add area", name it, then **drag a rectangle** over the
+  region on a translucent overlay. The bot sweeps that rectangle as a grid of
+  clicks (top-left → bottom-right) stepping by an **offset** (dx, dy) you set —
+  ideal for the map's non-deterministic mission spots or war-machine runs where
+  you must click everywhere to be sure. After **each** cell it performs the
+  area's **meantime clicks** (extra points you capture, e.g. an "accept mission"
+  button then a "close window" button). "Show grid" previews every click
+  position (blue) and meantime clicks (orange).
+
+Run an element:
+
+```
+python firestone_bot.py --element <name> --reps N
+```
+
+Elements can also be dropped into a sequence (action **element**), so you can
+mix single clicks, keys, waits and whole area-sweeps into one routine.
+
 ## Build your own routine (Sequence editor)
 
 The **Sequence** tab in `setup_gui.py` lets you compose a custom action cycle
